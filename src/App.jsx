@@ -2,15 +2,33 @@ import { useState, useEffect, useRef } from 'react'
 import { db } from './firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
+// ─── Constants ───────────────────────────────────────────────────────────────
+
 const POSITIONS = ['GK', 'DEF', 'MID', 'FWD']
 const FORMATION = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
-const posColor = { GK: '#e8a838', DEF: '#3a8fd4', MID: '#5bb85b', FWD: '#d45a5a' }
-const posLight = { GK: '#fff8ec', DEF: '#e8f3fc', MID: '#eaf6ea', FWD: '#fceaea' }
+const POS_COLOR  = { GK: '#f59e0b', DEF: '#3b82f6', MID: '#22c55e', FWD: '#ef4444' }
+const POS_BG     = { GK: '#fef3c7', DEF: '#dbeafe', MID: '#dcfce7', FWD: '#fee2e2' }
 
-const STATS = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
+const STATS    = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
 const QUALITIES = ['Aggression', 'Leadership', 'Team Player', 'Work Rate']
-const LEVELS = ['Low', 'Med', 'High']
-const levelColor = { Low: '#aaa', Med: '#3a8fd4', High: '#e8a838' }
+const LEVELS   = ['Low', 'Med', 'High']
+const LEVEL_COLOR = { Low: '#9ca3af', Med: '#3b82f6', High: '#f59e0b' }
+
+const C = {
+  header:  '#0f172a',
+  accent:  '#22c55e',
+  card:    '#ffffff',
+  bg:      '#f1f5f9',
+  border:  '#e2e8f0',
+  muted:   '#94a3b8',
+  text:    '#0f172a',
+  sub:     '#475569',
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+const qualityKey = q =>
+  q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
 
 const defaultPlayer = () => ({
   id: Date.now() + Math.random(),
@@ -25,28 +43,60 @@ const defaultRule = () => ({
   label: '', playerA: null, playerB: null, type: 'together', active: true
 })
 
-const qualityKey = q => q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
+function playerScore(p) {
+  const avg = (p.pace + p.shooting + p.passing + p.dribbling + p.defending + p.physical) / 6
+  return p.stars * 0.6 + (avg / 10) * 5 * 0.4
+}
 
-function Stars({ value, onChange }) {
+function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
+
+// ─── Small UI pieces ─────────────────────────────────────────────────────────
+
+function Stars({ value, onChange, size = 16 }) {
   return (
-    <div style={{ display: 'flex', gap: 2 }}>
+    <div style={{ display: 'flex', gap: 1 }}>
       {[1,2,3,4,5].map(s => (
-        <span key={s} onClick={() => onChange && onChange(s)}
-          style={{ cursor: onChange ? 'pointer' : 'default', fontSize: 16,
-            color: s <= value ? '#e8a838' : '#ccc' }}>★</span>
+        <span key={s} onClick={() => onChange?.(s)}
+          style={{ fontSize: size, cursor: onChange ? 'pointer' : 'default',
+            color: s <= value ? '#f59e0b' : '#e2e8f0', lineHeight: 1 }}>★</span>
       ))}
     </div>
   )
 }
 
-function Slider({ label, value, onChange }) {
+function Badge({ pos }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-      <span style={{ fontSize: 12, color: '#666', width: 72 }}>{label}</span>
+    <span style={{ background: POS_BG[pos], color: POS_COLOR[pos], borderRadius: 6,
+      padding: '2px 8px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+      {pos}
+    </span>
+  )
+}
+
+function StatBar({ label, value }) {
+  const pct = value * 10
+  const color = value >= 8 ? '#22c55e' : value >= 6 ? '#3b82f6' : value >= 4 ? '#f59e0b' : '#ef4444'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+      <span style={{ fontSize: 10, color: C.muted, width: 60, flexShrink: 0 }}>{label}</span>
+      <div style={{ flex: 1, height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99,
+          transition: 'width 0.3s ease' }} />
+      </div>
+      <span style={{ fontSize: 11, fontWeight: 700, color, width: 16, textAlign: 'right' }}>{value}</span>
+    </div>
+  )
+}
+
+function Slider({ label, value, onChange }) {
+  const color = value >= 8 ? '#22c55e' : value >= 6 ? '#3b82f6' : value >= 4 ? '#f59e0b' : '#ef4444'
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
+      <span style={{ fontSize: 12, color: C.sub, width: 70, flexShrink: 0 }}>{label}</span>
       <input type="range" min={1} max={10} step={1} value={value}
-        onChange={e => onChange(+e.target.value)} style={{ flex: 1 }} />
-      <span style={{ fontSize: 12, fontWeight: 600, width: 16, textAlign: 'right',
-        color: value >= 8 ? '#5bb85b' : value <= 3 ? '#d45a5a' : '#555' }}>{value}</span>
+        onChange={e => onChange(+e.target.value)}
+        style={{ flex: 1, accentColor: color }} />
+      <span style={{ fontSize: 13, fontWeight: 700, color, width: 18, textAlign: 'right' }}>{value}</span>
     </div>
   )
 }
@@ -54,15 +104,15 @@ function Slider({ label, value, onChange }) {
 function QualityToggle({ label, value, onChange }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-      <span style={{ fontSize: 12, color: '#666', width: 80 }}>{label}</span>
+      <span style={{ fontSize: 12, color: C.sub, width: 80, flexShrink: 0 }}>{label}</span>
       <div style={{ display: 'flex', gap: 4 }}>
         {LEVELS.map(l => (
           <button key={l} onClick={() => onChange(l)}
-            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-              background: value === l ? levelColor[l] : 'transparent',
-              color: value === l ? '#fff' : '#aaa',
-              border: `1px solid ${value === l ? levelColor[l] : '#e5e7eb'}`,
-              fontWeight: value === l ? 600 : 400 }}>
+            style={{ fontSize: 11, padding: '3px 10px', borderRadius: 20,
+              background: value === l ? LEVEL_COLOR[l] : 'transparent',
+              color: value === l ? '#fff' : C.muted,
+              border: `1.5px solid ${value === l ? LEVEL_COLOR[l] : C.border}`,
+              fontWeight: value === l ? 600 : 400, transition: 'all 0.15s' }}>
             {l}
           </button>
         ))}
@@ -71,18 +121,44 @@ function QualityToggle({ label, value, onChange }) {
   )
 }
 
-function StatBar({ label, value }) {
+function SectionLabel({ children }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
-      <span style={{ fontSize: 10, color: '#999', width: 58 }}>{label}</span>
-      <div style={{ flex: 1, height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ width: `${value * 10}%`, height: '100%', borderRadius: 3,
-          background: value >= 8 ? '#5bb85b' : value >= 5 ? '#3a8fd4' : '#d45a5a' }} />
-      </div>
-      <span style={{ fontSize: 10, fontWeight: 600, color: '#666', width: 14 }}>{value}</span>
+    <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: 1.2,
+      textTransform: 'uppercase', marginBottom: 8, marginTop: 14 }}>
+      {children}
+    </p>
+  )
+}
+
+function Card({ children, style }) {
+  return (
+    <div style={{ background: C.card, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
+      border: `1px solid ${C.border}`, ...style }}>
+      {children}
     </div>
   )
 }
+
+function Btn({ children, onClick, variant = 'default', disabled, style }) {
+  const variants = {
+    primary:  { background: C.accent,   color: '#fff',    border: 'none' },
+    danger:   { background: '#fee2e2',  color: '#ef4444', border: '1px solid #fca5a5' },
+    ghost:    { background: 'transparent', color: C.sub,  border: `1px solid ${C.border}` },
+    default:  { background: '#f8fafc',  color: C.text,    border: `1px solid ${C.border}` },
+    blue:     { background: '#3b82f6',  color: '#fff',    border: 'none' },
+  }
+  const v = variants[variant] || variants.default
+  return (
+    <button onClick={onClick} disabled={disabled}
+      style={{ ...v, borderRadius: 10, padding: '9px 16px', fontSize: 14, fontWeight: 500,
+        opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
+        transition: 'all 0.15s', ...style }}>
+      {children}
+    </button>
+  )
+}
+
+// ─── Player Card ─────────────────────────────────────────────────────────────
 
 function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected, onToggle }) {
   const [expanded, setExpanded] = useState(false)
@@ -95,199 +171,222 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
 
   if (compact) return (
     <div onClick={onToggle} style={{
-      background: '#fff', border: selected ? `2px solid ${posColor[p.position]}` : '1px solid #e5e7eb',
-      borderRadius: 10, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer'
+      background: selected ? POS_BG[p.position] : C.card,
+      border: `2px solid ${selected ? POS_COLOR[p.position] : C.border}`,
+      borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center',
+      gap: 10, cursor: 'pointer', transition: 'all 0.15s',
+      boxShadow: selected ? `0 0 0 3px ${POS_COLOR[p.position]}22` : 'none'
     }}>
-      <div style={{ background: posLight[p.position], color: posColor[p.position],
-        borderRadius: 6, padding: '2px 8px', fontSize: 11, fontWeight: 500, minWidth: 32, textAlign: 'center' }}>
-        {p.position}
-      </div>
-      <span style={{ flex: 1, fontWeight: 500, fontSize: 14 }}>{p.name || 'Unnamed'}</span>
-      {p.age && <span style={{ fontSize: 11, color: '#aaa' }}>{p.age}y</span>}
+      <Badge pos={p.position} />
+      <span style={{ flex: 1, fontWeight: 600, fontSize: 14, color: C.text }}>{p.name || 'Unnamed'}</span>
+      {p.age && <span style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>{p.age}y</span>}
       <Stars value={p.stars} />
     </div>
   )
 
   return (
-    <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
-      <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+    <Card style={{ marginBottom: 10 }}>
+      {/* Header row */}
+      <div style={{ padding: '14px 16px 10px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <input value={p.name} onChange={e => onUpdate({ ...p, name: e.target.value })}
               placeholder="Player name"
-              style={{ flex: 1, fontSize: 14, padding: '6px 10px',
-                border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }} />
+              style={{ flex: 1, fontSize: 15, fontWeight: 600, padding: '8px 12px',
+                border: `1.5px solid ${C.border}`, borderRadius: 10, color: C.text,
+                background: '#fafafa' }} />
             <input type="number" value={p.age} min={15} max={50}
               onChange={e => onUpdate({ ...p, age: +e.target.value })}
-              placeholder="Age"
-              style={{ width: 60, fontSize: 14, padding: '6px 8px', textAlign: 'center',
-                border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }} />
+              style={{ width: 62, fontSize: 14, padding: '8px 8px', textAlign: 'center',
+                border: `1.5px solid ${C.border}`, borderRadius: 10, background: '#fafafa',
+                color: C.sub, fontWeight: 500 }} />
           </div>
-          <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+          {/* Position pills */}
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
             {POSITIONS.map(pos => (
               <button key={pos} onClick={() => onUpdate({ ...p, position: pos })}
-                style={{ padding: '3px 10px', fontSize: 12, borderRadius: 6, cursor: 'pointer',
-                  background: p.position === pos ? posLight[pos] : 'transparent',
-                  color: p.position === pos ? posColor[pos] : '#888',
-                  border: `1px solid ${p.position === pos ? posColor[pos] : '#e5e7eb'}`,
-                  fontWeight: p.position === pos ? 500 : 400 }}>
+                style={{ padding: '4px 12px', fontSize: 12, borderRadius: 20, fontWeight: 600,
+                  background: p.position === pos ? POS_COLOR[pos] : 'transparent',
+                  color: p.position === pos ? '#fff' : C.muted,
+                  border: `1.5px solid ${p.position === pos ? POS_COLOR[pos] : C.border}`,
+                  transition: 'all 0.15s' }}>
                 {pos}
               </button>
             ))}
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: '#888' }}>Overall</span>
-            <Stars value={p.stars} onChange={v => onUpdate({ ...p, stars: v })} />
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ fontSize: 12, color: C.muted }}>Rating</span>
+            <Stars value={p.stars} onChange={v => onUpdate({ ...p, stars: v })} size={18} />
           </div>
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
           <button onClick={onDelete}
-            style={{ fontSize: 12, color: '#aaa', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+            style={{ fontSize: 16, color: C.muted, background: 'none', border: 'none',
+              padding: '2px 4px', borderRadius: 6, lineHeight: 1 }}>×</button>
           <button onClick={() => setExpanded(!expanded)}
-            style={{ fontSize: 11, color: '#888', background: 'none', border: '1px solid #e5e7eb',
-              borderRadius: 6, cursor: 'pointer', padding: '3px 8px', marginTop: 4 }}>
-            {expanded ? 'less' : 'more'}
+            style={{ fontSize: 11, color: C.sub, background: '#f8fafc', border: `1px solid ${C.border}`,
+              borderRadius: 8, padding: '4px 10px', marginTop: 4, fontWeight: 500 }}>
+            {expanded ? 'Less ▲' : 'More ▼'}
           </button>
         </div>
       </div>
 
-      {!expanded && (
-        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
-          {STATS.map(s => <StatBar key={s} label={s} value={p[s.toLowerCase()] ?? 5} />)}
-        </div>
-      )}
+      {/* Stat bars — always visible */}
+      <div style={{ padding: '0 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 16px' }}>
+        {STATS.map(s => <StatBar key={s} label={s} value={p[s.toLowerCase()] ?? 5} />)}
+      </div>
 
+      {/* Expanded section */}
       {expanded && (
-        <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12, marginTop: 10 }}>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Stats</p>
+        <div style={{ borderTop: `1px solid ${C.border}`, padding: '12px 16px 14px' }}>
+          <SectionLabel>Stats</SectionLabel>
           {STATS.map(s => (
             <Slider key={s} label={s} value={p[s.toLowerCase()] ?? 5}
               onChange={v => onUpdate({ ...p, [s.toLowerCase()]: v })} />
           ))}
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 8px', textTransform: 'uppercase', letterSpacing: 1 }}>Qualities</p>
+          <SectionLabel>Qualities</SectionLabel>
           {QUALITIES.map(q => (
             <QualityToggle key={q} label={q} value={p[qualityKey(q)] || 'Med'}
               onChange={v => onUpdate({ ...p, [qualityKey(q)]: v })} />
           ))}
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Keep apart from</p>
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
-            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
-              <button key={q.id} onClick={() => toggleRelation(q.id, 'keepApart')}
-                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-                  background: (p.keepApart||[]).includes(q.id) ? '#fceaea' : 'transparent',
-                  color: (p.keepApart||[]).includes(q.id) ? '#d45a5a' : '#888',
-                  border: `1px solid ${(p.keepApart||[]).includes(q.id) ? '#d45a5a' : '#e5e7eb'}` }}>
-                {q.name}
-              </button>
-            ))}
+          <SectionLabel>Keep apart from</SectionLabel>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
+            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => {
+              const on = (p.keepApart||[]).includes(q.id)
+              return (
+                <button key={q.id} onClick={() => toggleRelation(q.id, 'keepApart')}
+                  style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20,
+                    background: on ? '#fee2e2' : 'transparent',
+                    color: on ? '#ef4444' : C.muted,
+                    border: `1.5px solid ${on ? '#fca5a5' : C.border}`,
+                    fontWeight: on ? 600 : 400 }}>
+                  {q.name}
+                </button>
+              )
+            })}
           </div>
-          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Gets along well with</p>
+          <SectionLabel>Gets along well with</SectionLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
-              <button key={q.id} onClick={() => toggleRelation(q.id, 'keepTogether')}
-                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-                  background: (p.keepTogether||[]).includes(q.id) ? '#eaf6ea' : 'transparent',
-                  color: (p.keepTogether||[]).includes(q.id) ? '#5bb85b' : '#888',
-                  border: `1px solid ${(p.keepTogether||[]).includes(q.id) ? '#5bb85b' : '#e5e7eb'}` }}>
-                {q.name}
-              </button>
-            ))}
+            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => {
+              const on = (p.keepTogether||[]).includes(q.id)
+              return (
+                <button key={q.id} onClick={() => toggleRelation(q.id, 'keepTogether')}
+                  style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20,
+                    background: on ? '#dcfce7' : 'transparent',
+                    color: on ? '#16a34a' : C.muted,
+                    border: `1.5px solid ${on ? '#86efac' : C.border}`,
+                    fontWeight: on ? 600 : 400 }}>
+                  {q.name}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}
-    </div>
+    </Card>
   )
 }
 
-function RulesTab({ rules, setRules, players, saveRules }) {
+// ─── Rules Tab ────────────────────────────────────────────────────────────────
+
+function RulesTab({ rules, players, saveRules }) {
   const [draft, setDraft] = useState(null)
-  const namedPlayers = players.filter(p => p.name)
+  const named = players.filter(p => p.name)
 
   const saveDraft = () => {
     if (!draft.playerA || !draft.playerB || draft.playerA === draft.playerB) return
     const pA = players.find(p => p.id === draft.playerA)
     const pB = players.find(p => p.id === draft.playerB)
-    const autoLabel = draft.label || `${pA?.name} ${draft.type === 'together' ? '+' : '≠'} ${pB?.name}`
-    saveRules([...rules, { ...draft, label: autoLabel }])
+    const label = draft.label || `${pA?.name} ${draft.type === 'together' ? '+' : '≠'} ${pB?.name}`
+    saveRules([...rules, { ...draft, label }])
     setDraft(null)
   }
 
-  const toggleRule = (id) => saveRules(rules.map(r => r.id === id ? { ...r, active: !r.active } : r))
-  const deleteRule = (id) => saveRules(rules.filter(r => r.id !== id))
-
   return (
     <div>
-      <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-        Named constraints applied during team generation. Toggle on/off per session.
+      <p style={{ fontSize: 13, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
+        Named constraints applied during team generation. Toggle on/off each session.
       </p>
+
       {rules.length === 0 && !draft && (
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#bbb', fontSize: 14 }}>No rules yet.</div>
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>⚡</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>No rules yet</div>
+          <div style={{ fontSize: 13, color: C.muted }}>Add rules to control team pairings</div>
+        </Card>
       )}
+
       {rules.map(r => {
         const pA = players.find(p => p.id === r.playerA)
         const pB = players.find(p => p.id === r.playerB)
         return (
-          <div key={r.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
-            padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 14, fontWeight: 500, color: r.active ? '#111' : '#aaa' }}>{r.label}</div>
-              <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
-                <span style={{ color: r.type === 'together' ? '#5bb85b' : '#d45a5a', fontWeight: 500 }}>
+          <Card key={r.id} style={{ padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 4, alignSelf: 'stretch', borderRadius: 4,
+              background: r.active ? (r.type === 'together' ? C.accent : '#ef4444') : C.border }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, fontWeight: 600, color: r.active ? C.text : C.muted,
+                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{r.label}</div>
+              <div style={{ fontSize: 12, color: C.muted, marginTop: 2 }}>
+                <span style={{ color: r.type === 'together' ? '#16a34a' : '#ef4444', fontWeight: 600 }}>
                   {r.type === 'together' ? 'Same team' : 'Different teams'}
                 </span>
                 {' · '}{pA?.name} & {pB?.name}
               </div>
             </div>
-            <button onClick={() => toggleRule(r.id)}
-              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-                background: r.active ? '#eaf6ea' : '#f3f4f6',
-                color: r.active ? '#5bb85b' : '#aaa',
-                border: `1px solid ${r.active ? '#5bb85b' : '#e5e7eb'}`, fontWeight: 500 }}>
+            <button onClick={() => saveRules(rules.map(x => x.id === r.id ? { ...x, active: !x.active } : x))}
+              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
+                background: r.active ? '#dcfce7' : '#f1f5f9',
+                color: r.active ? '#16a34a' : C.muted,
+                border: `1.5px solid ${r.active ? '#86efac' : C.border}` }}>
               {r.active ? 'On' : 'Off'}
             </button>
-            <button onClick={() => deleteRule(r.id)}
-              style={{ fontSize: 12, color: '#ccc', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-          </div>
+            <button onClick={() => saveRules(rules.filter(x => x.id !== r.id))}
+              style={{ fontSize: 18, color: '#d1d5db', background: 'none', border: 'none',
+                padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
+          </Card>
         )
       })}
+
       {draft && (
-        <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
-          <p style={{ fontSize: 12, fontWeight: 600, color: '#aaa', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>New rule</p>
+        <Card style={{ padding: '16px', marginBottom: 8 }}>
+          <SectionLabel>New rule</SectionLabel>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
             <select value={draft.playerA || ''} onChange={e => setDraft({ ...draft, playerA: e.target.value })}
-              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              style={{ flex: 1, minWidth: 120, padding: '9px 12px', borderRadius: 10,
+                border: `1.5px solid ${C.border}`, fontSize: 13, background: '#fafafa', color: C.text }}>
               <option value=''>Player A</option>
-              {namedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {named.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value })}
-              style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`,
+                fontSize: 13, background: '#fafafa', color: C.text }}>
               <option value='together'>Same team</option>
               <option value='apart'>Different teams</option>
             </select>
             <select value={draft.playerB || ''} onChange={e => setDraft({ ...draft, playerB: e.target.value })}
-              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              style={{ flex: 1, minWidth: 120, padding: '9px 12px', borderRadius: 10,
+                border: `1.5px solid ${C.border}`, fontSize: 13, background: '#fafafa', color: C.text }}>
               <option value=''>Player B</option>
-              {namedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              {named.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
           <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })}
-            placeholder="Label (optional)"
-            style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb',
-              fontSize: 13, marginBottom: 10, boxSizing: 'border-box', background: '#fff' }} />
+            placeholder="Label (optional — auto-generated if blank)"
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 10,
+              border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 10,
+              background: '#fafafa', color: C.text }} />
           <div style={{ display: 'flex', gap: 8 }}>
-            <button onClick={saveDraft}
-              style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-                background: '#3a8fd4', color: '#fff', border: 'none', fontWeight: 500 }}>Save rule</button>
-            <button onClick={() => setDraft(null)}
-              style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-                background: 'transparent', color: '#888', border: '1px solid #e5e7eb' }}>Cancel</button>
+            <Btn variant="primary" onClick={saveDraft} style={{ flex: 1 }}>Save rule</Btn>
+            <Btn variant="ghost" onClick={() => setDraft(null)}>Cancel</Btn>
           </div>
-        </div>
+        </Card>
       )}
+
       {!draft && (
-        <button onClick={() => setDraft(defaultRule())} style={{ width: '100%', padding: 10, fontSize: 14,
-          borderRadius: 10, cursor: 'pointer', marginTop: 4, border: '1px dashed #d1d5db',
-          background: 'transparent', color: '#888' }}>
+        <button onClick={() => setDraft(defaultRule())}
+          style={{ width: '100%', padding: 12, fontSize: 14, borderRadius: 12, marginTop: 4,
+            border: `2px dashed ${C.border}`, background: 'transparent', color: C.muted,
+            fontWeight: 500 }}>
           + Add rule
         </button>
       )}
@@ -295,76 +394,131 @@ function RulesTab({ rules, setRules, players, saveRules }) {
   )
 }
 
+// ─── Team Generation ─────────────────────────────────────────────────────────
+
+function generateTeams(selected, players, rules) {
+  const pool = players.filter(p => selected.includes(p.id))
+  const gks  = pool.filter(p => p.position === 'GK')
+  const defs = pool.filter(p => p.position === 'DEF')
+  const mids = pool.filter(p => p.position === 'MID')
+  const fwds = pool.filter(p => p.position === 'FWD')
+  if (gks.length < 2 || defs.length < 6 || mids.length < 4 || fwds.length < 2) return null
+
+  const active = (rules || []).filter(r => r.active)
+  let best = null, bestDiff = Infinity
+
+  for (let i = 0; i < 500; i++) {
+    const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
+    const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
+    const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
+
+    const bad = (ta, tb) => {
+      if (ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
+      if (tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
+      if (ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))) return true
+      if (tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))) return true
+      return active.some(r => {
+        const aT1 = ta.find(p => p.id == r.playerA), bT1 = ta.find(p => p.id == r.playerB)
+        const aT2 = tb.find(p => p.id == r.playerA), bT2 = tb.find(p => p.id == r.playerB)
+        return r.type === 'together'
+          ? (aT1 && bT2) || (aT2 && bT1)
+          : (aT1 && bT1) || (aT2 && bT2)
+      })
+    }
+
+    if (bad(t1, t2)) continue
+    const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+    const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+    const diff = Math.abs(s1 - s2)
+    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2 } }
+  }
+  return best
+}
+
+// ─── Team Display ─────────────────────────────────────────────────────────────
+
+function TeamDisplay({ team, label, score, color, accent }) {
+  const byPos = POSITIONS.reduce((acc, pos) => {
+    acc[pos] = team.filter(p => p.position === pos); return acc
+  }, {})
+  return (
+    <div style={{ flex: 1, minWidth: 260, background: C.card, borderRadius: 16,
+      border: `1px solid ${C.border}`, overflow: 'hidden',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+      <div style={{ background: color, padding: '12px 16px', display: 'flex',
+        justifyContent: 'space-between', alignItems: 'center' }}>
+        <span style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>{label}</span>
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
+          Score {score.toFixed(1)}
+        </span>
+      </div>
+      <div style={{ padding: '12px 16px' }}>
+        {POSITIONS.map(pos => byPos[pos].length > 0 && (
+          <div key={pos} style={{ marginBottom: 10 }}>
+            <div style={{ fontSize: 10, fontWeight: 700, color: POS_COLOR[pos],
+              letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 }}>{pos}</div>
+            {byPos[pos].map(p => (
+              <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
+                padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: C.text }}>{p.name}</span>
+                {p.age && <span style={{ fontSize: 11, color: C.muted }}>{p.age}y</span>}
+                <Stars value={p.stars} size={13} />
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ─── AI Coach ─────────────────────────────────────────────────────────────────
+
 function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
-  const [messages, setMessages] = useState([
-    { role: 'assistant', content: "Hi! I'm your AI coach. Tell me what happened in today's game, ask me to update player stats, set team rules, or anything else about the squad." }
-  ])
+  const [messages, setMessages] = useState([{
+    role: 'assistant',
+    content: "Hey coach! 👋 Tell me what happened in today's game, ask me to update player stats, create team rules, or anything about the squad."
+  }])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const bottomRef = useRef(null)
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
+  useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  const applyActions = (actions, currentPlayers, currentRules) => {
-    let updatedPlayers = [...currentPlayers]
-    let updatedRules = [...currentRules]
-    const applied = []
-
-    for (const action of actions || []) {
-      if (action.type === 'updatePlayer') {
-        updatedPlayers = updatedPlayers.map(p => {
-          if (p.id == action.playerId) {
-            applied.push(`Updated ${p.name}`)
-            return { ...p, ...action.changes }
-          }
-          return p
-        })
-      } else if (action.type === 'addRule') {
-        const pA = updatedPlayers.find(p => p.id == action.playerAId)
-        const pB = updatedPlayers.find(p => p.id == action.playerBId)
+  const applyActions = (actions, curPlayers, curRules) => {
+    let p = [...curPlayers], r = [...curRules], log = []
+    for (const a of actions || []) {
+      if (a.type === 'updatePlayer') {
+        p = p.map(x => x.id == a.playerId ? (log.push(`Updated ${x.name}`), { ...x, ...a.changes }) : x)
+      } else if (a.type === 'addRule') {
+        const pA = p.find(x => x.id == a.playerAId), pB = p.find(x => x.id == a.playerBId)
         if (pA && pB) {
-          const newRule = {
-            id: Date.now() + Math.random(),
-            label: action.label || `${pA.name} ${action.ruleType === 'together' ? '+' : '≠'} ${pB.name}`,
-            playerA: action.playerAId,
-            playerB: action.playerBId,
-            type: action.ruleType,
-            active: true
-          }
-          updatedRules = [...updatedRules, newRule]
-          applied.push(`Added rule: ${newRule.label}`)
+          r = [...r, { id: Date.now() + Math.random(), active: true, type: a.ruleType,
+            playerA: a.playerAId, playerB: a.playerBId,
+            label: a.label || `${pA.name} ${a.ruleType === 'together' ? '+' : '≠'} ${pB.name}` }]
+          log.push(`Added rule`)
         }
-      } else if (action.type === 'toggleRule') {
-        updatedRules = updatedRules.map(r => r.id == action.ruleId ? { ...r, active: !r.active } : r)
-        applied.push(`Toggled rule`)
-      } else if (action.type === 'deleteRule') {
-        updatedRules = updatedRules.filter(r => r.id != action.ruleId)
-        applied.push(`Deleted rule`)
+      } else if (a.type === 'toggleRule') {
+        r = r.map(x => x.id == a.ruleId ? { ...x, active: !x.active } : x)
+        log.push('Toggled rule')
+      } else if (a.type === 'deleteRule') {
+        r = r.filter(x => x.id != a.ruleId)
+        log.push('Deleted rule')
       }
     }
-
-    if (updatedPlayers !== currentPlayers) onPlayersUpdate(updatedPlayers)
-    if (updatedRules !== currentRules) onRulesUpdate(updatedRules)
-    return applied
+    if (p !== curPlayers) onPlayersUpdate(p)
+    if (r !== curRules) onRulesUpdate(r)
+    return log
   }
 
   const send = async () => {
     if (!input.trim() || loading) return
     const userMsg = input.trim()
     setInput('')
-
-    const newMessages = [...messages, { role: 'user', content: userMsg }]
-    setMessages(newMessages)
+    const next = [...messages, { role: 'user', content: userMsg }]
+    setMessages(next)
     setLoading(true)
-
-    // Build history for Claude (exclude the initial greeting)
-    const history = newMessages.slice(1, -1).map(m => ({
-      role: m.role === 'assistant' ? 'assistant' : 'user',
-      content: m.content
-    }))
-
+    const history = next.slice(1, -1).map(m => ({ role: m.role, content: m.content }))
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
@@ -372,35 +526,41 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
         body: JSON.stringify({ message: userMsg, players, rules, history })
       })
       const data = await res.json()
-      const applied = applyActions(data.actions, players, rules)
-
-      const suffix = applied.length ? `\n\n_Applied: ${applied.join(', ')}_` : ''
+      const log = applyActions(data.actions, players, rules)
+      const suffix = log.length ? `\n\n✓ ${log.join(', ')}` : ''
       setMessages(prev => [...prev, { role: 'assistant', content: data.message + suffix }])
-    } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }])
+    } catch {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Something went wrong. Try again.' }])
     }
     setLoading(false)
   }
 
   const suggestions = [
-    "Team A won 3-1 today, Musa scored twice",
+    "Team A won 3-1, Musa scored twice",
     "Put Eren and Kurt on the same team",
-    "Who are our strongest defenders?",
-    "Balance the squad better for next week"
+    "Who are our weakest defenders?",
+    "Suggest how to improve squad balance",
   ]
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '60vh', minHeight: 400 }}>
-      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 12 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)', minHeight: 400 }}>
+      <div className="chat-messages" style={{ flex: 1, overflowY: 'auto', paddingBottom: 12 }}>
         {messages.map((m, i) => (
-          <div key={i} style={{ marginBottom: 12, display: 'flex',
+          <div key={i} style={{ marginBottom: 10, display: 'flex',
             justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            {m.role === 'assistant' && (
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.accent,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 14, marginRight: 8, flexShrink: 0, alignSelf: 'flex-end' }}>⚽</div>
+            )}
             <div style={{
-              maxWidth: '82%', padding: '10px 14px', borderRadius: 12, fontSize: 14, lineHeight: 1.5,
-              background: m.role === 'user' ? '#3a8fd4' : '#f3f4f6',
-              color: m.role === 'user' ? '#fff' : '#111',
-              borderBottomRightRadius: m.role === 'user' ? 4 : 12,
-              borderBottomLeftRadius: m.role === 'assistant' ? 4 : 12,
+              maxWidth: '78%', padding: '10px 14px', borderRadius: 16, fontSize: 14, lineHeight: 1.6,
+              background: m.role === 'user' ? '#0f172a' : C.card,
+              color: m.role === 'user' ? '#fff' : C.text,
+              border: m.role === 'assistant' ? `1px solid ${C.border}` : 'none',
+              borderBottomRightRadius: m.role === 'user' ? 4 : 16,
+              borderBottomLeftRadius: m.role === 'assistant' ? 4 : 16,
+              boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
               whiteSpace: 'pre-wrap'
             }}>
               {m.content}
@@ -408,9 +568,14 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
           </div>
         ))}
         {loading && (
-          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
-            <div style={{ background: '#f3f4f6', borderRadius: 12, borderBottomLeftRadius: 4,
-              padding: '10px 14px', fontSize: 14, color: '#aaa' }}>Thinking...</div>
+          <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 10 }}>
+            <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.accent,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              fontSize: 14, marginRight: 8 }}>⚽</div>
+            <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16,
+              borderBottomLeftRadius: 4, padding: '10px 16px', fontSize: 14, color: C.muted }}>
+              Thinking<span style={{ animation: 'none' }}>...</span>
+            </div>
           </div>
         )}
         <div ref={bottomRef} />
@@ -420,154 +585,77 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
           {suggestions.map(s => (
             <button key={s} onClick={() => setInput(s)}
-              style={{ fontSize: 12, padding: '5px 10px', borderRadius: 8, cursor: 'pointer',
-                background: '#f3f4f6', color: '#555', border: '1px solid #e5e7eb' }}>
+              style={{ fontSize: 12, padding: '6px 12px', borderRadius: 20,
+                background: C.card, color: C.sub, border: `1px solid ${C.border}`,
+                fontWeight: 500 }}>
               {s}
             </button>
           ))}
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+      <div style={{ display: 'flex', gap: 8, paddingTop: 10, borderTop: `1px solid ${C.border}` }}>
         <input value={input} onChange={e => setInput(e.target.value)}
           onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
-          placeholder="Ask your AI coach..."
-          style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb',
-            fontSize: 14, outline: 'none' }} />
+          placeholder="Talk to your AI coach..."
+          style={{ flex: 1, padding: '11px 14px', borderRadius: 12, border: `1.5px solid ${C.border}`,
+            fontSize: 14, background: '#fafafa', color: C.text }} />
         <button onClick={send} disabled={loading || !input.trim()}
-          style={{ padding: '10px 18px', borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer',
-            background: input.trim() && !loading ? '#3a8fd4' : '#f3f4f6',
-            color: input.trim() && !loading ? '#fff' : '#aaa',
-            border: 'none', fontSize: 14, fontWeight: 500 }}>
-          Send
+          style={{ padding: '11px 20px', borderRadius: 12, fontSize: 14, fontWeight: 600,
+            background: input.trim() && !loading ? C.accent : C.border,
+            color: input.trim() && !loading ? '#fff' : C.muted,
+            border: 'none', transition: 'all 0.15s' }}>
+          ↑
         </button>
       </div>
     </div>
   )
 }
 
-function playerScore(p) {
-  const statAvg = (p.pace + p.shooting + p.passing + p.dribbling + p.defending + p.physical) / 6
-  return p.stars * 0.6 + (statAvg / 10) * 5 * 0.4
-}
-
-function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
-
-function generateTeams(selected, players, rules) {
-  const pool = players.filter(p => selected.includes(p.id))
-  const gks = pool.filter(p => p.position === 'GK')
-  const defs = pool.filter(p => p.position === 'DEF')
-  const mids = pool.filter(p => p.position === 'MID')
-  const fwds = pool.filter(p => p.position === 'FWD')
-
-  if (gks.length < 2 || defs.length < 6 || mids.length < 4 || fwds.length < 2) return null
-
-  const activeRules = (rules || []).filter(r => r.active)
-  let best = null, bestDiff = Infinity
-
-  for (let i = 0; i < 500; i++) {
-    const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds)
-    const t1 = [gks[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
-    const t2 = [gks[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
-
-    const violates = (ta, tb) => {
-      const apartViolation = ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
-        || tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
-      const togetherViolation = ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))
-        || tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))
-      const ruleViolation = activeRules.some(r => {
-        const aInT1 = ta.find(p => p.id == r.playerA)
-        const bInT1 = ta.find(p => p.id == r.playerB)
-        const aInT2 = tb.find(p => p.id == r.playerA)
-        const bInT2 = tb.find(p => p.id == r.playerB)
-        return r.type === 'together'
-          ? (aInT1 && bInT2) || (aInT2 && bInT1)
-          : (aInT1 && bInT1) || (aInT2 && bInT2)
-      })
-      return apartViolation || togetherViolation || ruleViolation
-    }
-
-    if (violates(t1, t2)) continue
-    const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
-    const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
-    const diff = Math.abs(s1 - s2)
-    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2 } }
-  }
-  return best
-}
-
-function TeamDisplay({ team, label, score, color }) {
-  const byPos = POSITIONS.reduce((acc, pos) => { acc[pos] = team.filter(p => p.position === pos); return acc }, {})
-  return (
-    <div style={{ flex: 1, background: '#fff', border: `2px solid ${color}`, borderRadius: 12, padding: '14px 16px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <span style={{ fontWeight: 600, fontSize: 15 }}>{label}</span>
-        <span style={{ fontSize: 12, color: '#888' }}>Score: <strong>{score.toFixed(1)}</strong></span>
-      </div>
-      {POSITIONS.map(pos => byPos[pos].length > 0 && (
-        <div key={pos} style={{ marginBottom: 8 }}>
-          <span style={{ fontSize: 11, fontWeight: 600, color: posColor[pos], marginBottom: 4, display: 'block' }}>{pos}</span>
-          {byPos[pos].map(p => (
-            <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
-              borderBottom: '1px solid #f3f4f6' }}>
-              <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
-              {p.age && <span style={{ fontSize: 11, color: '#bbb' }}>{p.age}</span>}
-              <Stars value={p.stars} />
-            </div>
-          ))}
-        </div>
-      ))}
-    </div>
-  )
-}
+// ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [tab, setTab] = useState('pool')
-  const [players, setPlayers] = useState([])
-  const [rules, setRules] = useState([])
+  const [players, setPlayers]   = useState([])
+  const [rules, setRules]       = useState([])
   const [selected, setSelected] = useState([])
-  const [teams, setTeams] = useState(null)
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [loaded, setLoaded] = useState(false)
+  const [teams, setTeams]       = useState(null)
+  const [error, setError]       = useState('')
+  const [saving, setSaving]     = useState(false)
+  const [loaded, setLoaded]     = useState(false)
 
   useEffect(() => {
     (async () => {
       try {
-        const [pSnap, rSnap] = await Promise.all([
+        const [ps, rs] = await Promise.all([
           getDoc(doc(db, 'shared', 'players')),
           getDoc(doc(db, 'shared', 'rules'))
         ])
-        if (pSnap.exists()) setPlayers(pSnap.data().list || [])
-        if (rSnap.exists()) setRules(rSnap.data().list || [])
-      } catch (e) { console.error('Load error', e) }
+        if (ps.exists()) setPlayers(ps.data().list || [])
+        if (rs.exists()) setRules(rs.data().list || [])
+      } catch (e) { console.error(e) }
       setLoaded(true)
     })()
   }, [])
 
-  const savePlayers = async (updated) => {
-    setPlayers(updated)
-    setSaving(true)
-    try { await setDoc(doc(db, 'shared', 'players'), { list: updated }) }
-    catch (e) { console.error('Save error', e) }
+  const savePlayers = async updated => {
+    setPlayers(updated); setSaving(true)
+    try { await setDoc(doc(db, 'shared', 'players'), { list: updated }) } catch {}
+    setSaving(false)
+  }
+  const saveRules = async updated => {
+    setRules(updated); setSaving(true)
+    try { await setDoc(doc(db, 'shared', 'rules'), { list: updated }) } catch {}
     setSaving(false)
   }
 
-  const saveRules = async (updated) => {
-    setRules(updated)
-    setSaving(true)
-    try { await setDoc(doc(db, 'shared', 'rules'), { list: updated }) }
-    catch (e) { console.error('Save error', e) }
-    setSaving(false)
-  }
-
-  const addPlayer = () => savePlayers([...players, defaultPlayer()])
-  const updatePlayer = (p) => savePlayers(players.map(x => x.id === p.id ? p : x))
-  const deletePlayer = (id) => {
+  const addPlayer    = () => savePlayers([...players, defaultPlayer()])
+  const updatePlayer = p  => savePlayers(players.map(x => x.id === p.id ? p : x))
+  const deletePlayer = id => {
     setSelected(s => s.filter(x => x !== id))
     savePlayers(players.filter(x => x.id !== id).map(x => ({
       ...x,
-      keepApart: (x.keepApart||[]).filter(k => k !== id),
+      keepApart:    (x.keepApart||[]).filter(k => k !== id),
       keepTogether: (x.keepTogether||[]).filter(k => k !== id)
     })))
   }
@@ -577,166 +665,229 @@ export default function App() {
     return acc
   }, {})
 
-  const toggleSelect = (id) => {
+  const toggleSelect = id => {
     const p = players.find(x => x.id === id)
     if (!p) return
     if (selected.includes(id)) { setSelected(s => s.filter(x => x !== id)); setError(''); return }
     if (selCounts[p.position] >= FORMATION[p.position]) {
       setError(`Max ${FORMATION[p.position]} ${p.position}s allowed.`); return
     }
-    setError('')
-    setSelected(s => [...s, id])
+    setError(''); setSelected(s => [...s, id])
   }
 
   const readyToGenerate = POSITIONS.every(pos => selCounts[pos] === FORMATION[pos])
+  const activeRules = rules.filter(r => r.active)
 
   const generate = () => {
     const result = generateTeams(selected, players, rules)
-    if (!result) setError('Could not balance teams with current constraints. Try toggling some rules off.')
+    if (!result) setError('Could not balance teams. Try toggling some rules off.')
     else { setTeams(result); setError(''); setTab('teams') }
   }
 
-  const activeRules = rules.filter(r => r.active)
+  const TABS = [
+    { id: 'pool',    label: 'Squad' },
+    { id: 'rules',   label: `Rules${activeRules.length ? ` · ${activeRules.length}` : ''}` },
+    { id: 'session', label: 'Session' },
+    { id: 'teams',   label: 'Teams' },
+    { id: 'ai',      label: '✦ AI' },
+  ]
 
-  const tabStyle = (t) => ({
-    padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 8,
-    background: tab === t ? '#f3f4f6' : 'transparent',
-    border: tab === t ? '1px solid #e5e7eb' : '1px solid transparent',
-    color: tab === t ? '#111' : '#888', fontWeight: tab === t ? 500 : 400
-  })
-
-  if (!loaded) return <div style={{ padding: '2rem', color: '#888', fontSize: 14 }}>Loading player pool...</div>
+  if (!loaded) return (
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      background: C.header }}>
+      <div style={{ textAlign: 'center', color: '#fff' }}>
+        <div style={{ fontSize: 40, marginBottom: 12 }}>⚽</div>
+        <div style={{ fontSize: 16, opacity: 0.7 }}>Loading squad...</div>
+      </div>
+    </div>
+  )
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 720, margin: '0 auto' }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>⚽ Pape Spor Squad</h2>
-        <span style={{ fontSize: 12, color: '#888' }}>
-          {players.length} players {saving ? '· saving...' : ''}
-        </span>
+    <div style={{ minHeight: '100vh', background: C.bg }}>
+      {/* Header */}
+      <div style={{ background: C.header, padding: '16px 20px', display: 'flex',
+        alignItems: 'center', justifyContent: 'space-between',
+        position: 'sticky', top: 0, zIndex: 100,
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ fontSize: 22 }}>⚽</span>
+          <div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: -0.3 }}>
+              Pape Spor Squad
+            </div>
+            <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+              {players.length} players{saving ? ' · saving...' : ''}
+            </div>
+          </div>
+        </div>
+        <div style={{ width: 8, height: 8, borderRadius: '50%',
+          background: saving ? '#f59e0b' : C.accent,
+          boxShadow: `0 0 8px ${saving ? '#f59e0b' : C.accent}` }} />
       </div>
 
-      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f9fafb',
-        padding: 4, borderRadius: 10, width: 'fit-content', flexWrap: 'wrap' }}>
-        {['pool', 'rules', 'session', 'teams', 'ai'].map(t => (
-          <button key={t} onClick={() => setTab(t)} style={tabStyle(t)}>
-            {t === 'pool' ? 'Player pool'
-              : t === 'rules' ? `Rules${activeRules.length ? ` (${activeRules.length})` : ''}`
-              : t === 'session' ? 'Weekly session'
-              : t === 'teams' ? 'Teams'
-              : '✦ AI Coach'}
+      {/* Tab bar */}
+      <div style={{ background: C.card, borderBottom: `1px solid ${C.border}`,
+        padding: '0 16px', display: 'flex', gap: 0, overflowX: 'auto',
+        scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
+        {TABS.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{ padding: '14px 16px', fontSize: 13, fontWeight: tab === t.id ? 700 : 500,
+              color: tab === t.id ? C.accent : C.muted, background: 'none', border: 'none',
+              borderBottom: `2.5px solid ${tab === t.id ? C.accent : 'transparent'}`,
+              whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
+            {t.label}
           </button>
         ))}
       </div>
 
-      {tab === 'pool' && (
-        <div>
-          <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-            Shared roster — changes save instantly for everyone.
-          </p>
-          {players.map(p => (
-            <PlayerCard key={p.id} player={p} allPlayers={players}
-              onUpdate={updatePlayer} onDelete={() => deletePlayer(p.id)} />
-          ))}
-          <button onClick={addPlayer} style={{ width: '100%', padding: 10, fontSize: 14,
-            borderRadius: 10, cursor: 'pointer', marginTop: 4, border: '1px dashed #d1d5db',
-            background: 'transparent', color: '#888' }}>
-            + Add player
-          </button>
-        </div>
-      )}
+      {/* Content */}
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 40px' }}>
 
-      {tab === 'rules' && (
-        <RulesTab rules={rules} setRules={setRules} players={players} saveRules={saveRules} />
-      )}
-
-      {tab === 'session' && (
-        <div>
-          <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
-            Select 2 GK · 6 DEF · 4 MID · 2 FWD for today's game.
-          </p>
-          {activeRules.length > 0 && (
-            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', marginBottom: 14,
-              fontSize: 12, color: '#888' }}>
-              {activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active — {activeRules.map(r => r.label).join(', ')}
-            </div>
-          )}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
-            {POSITIONS.map(pos => (
-              <div key={pos} style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: posColor[pos], fontWeight: 600, marginBottom: 2 }}>{pos}</div>
-                <div style={{ fontSize: 20, fontWeight: 600,
-                  color: selCounts[pos] === FORMATION[pos] ? posColor[pos] : '#111' }}>
-                  {selCounts[pos]}<span style={{ fontSize: 13, color: '#aaa', fontWeight: 400 }}>/{FORMATION[pos]}</span>
-                </div>
-              </div>
+        {/* ── Squad ── */}
+        {tab === 'pool' && (
+          <div>
+            <p style={{ fontSize: 13, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
+              Shared roster — edits save instantly for everyone in the group.
+            </p>
+            {players.length === 0 && (
+              <Card style={{ padding: '48px 20px', textAlign: 'center', marginBottom: 12 }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 4 }}>No players yet</div>
+                <div style={{ fontSize: 13, color: C.muted }}>Add your first player below</div>
+              </Card>
+            )}
+            {players.map(p => (
+              <PlayerCard key={p.id} player={p} allPlayers={players}
+                onUpdate={updatePlayer} onDelete={() => deletePlayer(p.id)} />
             ))}
+            <button onClick={addPlayer}
+              style={{ width: '100%', padding: 14, fontSize: 14, fontWeight: 600,
+                borderRadius: 14, border: `2px dashed ${C.border}`, background: 'transparent',
+                color: C.muted, marginTop: 4 }}>
+              + Add player
+            </button>
           </div>
-          {POSITIONS.map(pos => {
-            const group = players.filter(p => p.position === pos)
-            if (!group.length) return null
-            return (
-              <div key={pos} style={{ marginBottom: 14 }}>
-                <p style={{ fontSize: 12, fontWeight: 600, color: posColor[pos], marginBottom: 6 }}>{pos}</p>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                  {group.map(p => (
-                    <PlayerCard key={p.id} player={p} allPlayers={players}
-                      onUpdate={updatePlayer} onDelete={() => {}} compact
-                      selected={selected.includes(p.id)} onToggle={() => toggleSelect(p.id)} />
-                  ))}
-                </div>
-              </div>
-            )
-          })}
-          {error && <p style={{ fontSize: 13, color: '#d45a5a', marginTop: 8 }}>{error}</p>}
-          <button onClick={generate} disabled={!readyToGenerate}
-            style={{ width: '100%', marginTop: 16, padding: 12, fontSize: 15, fontWeight: 500,
-              borderRadius: 10, cursor: readyToGenerate ? 'pointer' : 'not-allowed',
-              background: readyToGenerate ? '#3a8fd4' : '#f3f4f6',
-              color: readyToGenerate ? '#fff' : '#aaa', border: 'none' }}>
-            Generate teams
-          </button>
-        </div>
-      )}
+        )}
 
-      {tab === 'teams' && (
-        <div>
-          {!teams
-            ? <p style={{ fontSize: 13, color: '#888' }}>No teams generated yet. Go to Weekly session to pick players.</p>
-            : <>
-                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-                  <TeamDisplay team={teams.t1} label="Team A" score={teams.s1} color="#3a8fd4" />
-                  <TeamDisplay team={teams.t2} label="Team B" score={teams.s2} color="#5bb85b" />
+        {/* ── Rules ── */}
+        {tab === 'rules' && (
+          <RulesTab rules={rules} players={players} saveRules={saveRules} />
+        )}
+
+        {/* ── Session ── */}
+        {tab === 'session' && (
+          <div>
+            <p style={{ fontSize: 13, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
+              Pick 2 GK · 6 DEF · 4 MID · 2 FWD for today's game.
+            </p>
+
+            {/* Formation tracker */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
+              {POSITIONS.map(pos => {
+                const done = selCounts[pos] === FORMATION[pos]
+                return (
+                  <Card key={pos} style={{ padding: '10px 8px', textAlign: 'center',
+                    borderColor: done ? POS_COLOR[pos] : C.border,
+                    background: done ? POS_BG[pos] : C.card }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: POS_COLOR[pos],
+                      letterSpacing: 1, marginBottom: 4 }}>{pos}</div>
+                    <div style={{ fontSize: 22, fontWeight: 800, color: done ? POS_COLOR[pos] : C.text, lineHeight: 1 }}>
+                      {selCounts[pos]}
+                      <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>/{FORMATION[pos]}</span>
+                    </div>
+                  </Card>
+                )
+              })}
+            </div>
+
+            {activeRules.length > 0 && (
+              <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10,
+                padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#92400e', display: 'flex', gap: 8, alignItems: 'center' }}>
+                <span>⚡</span>
+                <span>{activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active: {activeRules.map(r => r.label).join(', ')}</span>
+              </div>
+            )}
+
+            {POSITIONS.map(pos => {
+              const group = players.filter(p => p.position === pos)
+              if (!group.length) return null
+              return (
+                <div key={pos} style={{ marginBottom: 16 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                    <div style={{ width: 3, height: 16, borderRadius: 2, background: POS_COLOR[pos] }} />
+                    <span style={{ fontSize: 12, fontWeight: 700, color: POS_COLOR[pos], letterSpacing: 0.5 }}>{pos}</span>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {group.map(p => (
+                      <PlayerCard key={p.id} player={p} allPlayers={players}
+                        onUpdate={updatePlayer} onDelete={() => {}} compact
+                        selected={selected.includes(p.id)} onToggle={() => toggleSelect(p.id)} />
+                    ))}
+                  </div>
                 </div>
-                <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-                  <button onClick={() => setTeams(generateTeams(selected, players, rules))}
-                    style={{ flex: 1, padding: 10, fontSize: 14, borderRadius: 10, cursor: 'pointer',
-                      border: '1px solid #e5e7eb', background: 'transparent', color: '#111' }}>
+              )
+            })}
+
+            {error && (
+              <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10,
+                padding: '10px 14px', fontSize: 13, color: '#dc2626', marginTop: 8 }}>
+                {error}
+              </div>
+            )}
+
+            <button onClick={generate} disabled={!readyToGenerate}
+              style={{ width: '100%', marginTop: 16, padding: 14, fontSize: 16, fontWeight: 700,
+                borderRadius: 14, border: 'none', transition: 'all 0.2s',
+                background: readyToGenerate ? C.accent : C.border,
+                color: readyToGenerate ? '#fff' : C.muted,
+                cursor: readyToGenerate ? 'pointer' : 'not-allowed',
+                boxShadow: readyToGenerate ? '0 4px 14px rgba(34,197,94,0.35)' : 'none' }}>
+              Generate Teams
+            </button>
+          </div>
+        )}
+
+        {/* ── Teams ── */}
+        {tab === 'teams' && (
+          <div>
+            {!teams ? (
+              <Card style={{ padding: '48px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
+                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 4 }}>No teams yet</div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Go to Session to select players</div>
+                <Btn variant="primary" onClick={() => setTab('session')}>Go to Session</Btn>
+              </Card>
+            ) : (
+              <>
+                <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
+                  <TeamDisplay team={teams.t1} label="Team A" score={teams.s1} color="#3b82f6" />
+                  <TeamDisplay team={teams.t2} label="Team B" score={teams.s2} color="#22c55e" />
+                </div>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <Btn variant="default" style={{ flex: 1 }}
+                    onClick={() => setTeams(generateTeams(selected, players, rules))}>
                     Regenerate
-                  </button>
-                  <button onClick={() => setTab('session')}
-                    style={{ flex: 1, padding: 10, fontSize: 14, borderRadius: 10, cursor: 'pointer',
-                      border: '1px solid #e5e7eb', background: 'transparent', color: '#111' }}>
+                  </Btn>
+                  <Btn variant="default" style={{ flex: 1 }} onClick={() => setTab('session')}>
                     Change players
-                  </button>
+                  </Btn>
                 </div>
-                <div style={{ marginTop: 12, padding: '10px 14px', background: '#f9fafb',
-                  borderRadius: 10, fontSize: 12, color: '#888', textAlign: 'center' }}>
-                  After the game, go to <strong>AI Coach</strong> to report the score and update player ratings
+                <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef3c7',
+                  border: '1px solid #fde68a', borderRadius: 10, fontSize: 12, color: '#92400e',
+                  textAlign: 'center' }}>
+                  After the game, go to <strong>✦ AI</strong> to report the score and update ratings
                 </div>
               </>
-          }
-        </div>
-      )}
+            )}
+          </div>
+        )}
 
-      {tab === 'ai' && (
-        <AICoach
-          players={players}
-          rules={rules}
-          onPlayersUpdate={savePlayers}
-          onRulesUpdate={saveRules}
-        />
-      )}
+        {/* ── AI Coach ── */}
+        {tab === 'ai' && (
+          <AICoach players={players} rules={rules}
+            onPlayersUpdate={savePlayers} onRulesUpdate={saveRules} />
+        )}
+      </div>
     </div>
   )
 }
