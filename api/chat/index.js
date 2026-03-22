@@ -1,6 +1,6 @@
 const Anthropic = require('@anthropic-ai/sdk')
 
-const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+const client = new Anthropic({ apiKey: '__ANTHROPIC_API_KEY__' })
 
 module.exports = async function (context, req) {
   const { message, players, rules, history } = req.body || {}
