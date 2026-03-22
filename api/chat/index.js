@@ -67,7 +67,9 @@ Guidelines:
       messages
     })
 
-    const text = response.content[0].text
+    let text = response.content[0].text
+    // Strip markdown code blocks if Claude wrapped the JSON
+    text = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/```\s*$/i, '').trim()
     let parsed
     try {
       parsed = JSON.parse(text)
