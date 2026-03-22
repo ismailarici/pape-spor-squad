@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { db } from './firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
@@ -22,11 +22,7 @@ const defaultPlayer = () => ({
 
 const defaultRule = () => ({
   id: Date.now() + Math.random(),
-  label: '',
-  playerA: null,
-  playerB: null,
-  type: 'together',
-  active: true
+  label: '', playerA: null, playerB: null, type: 'together', active: true
 })
 
 const qualityKey = q => q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
@@ -205,27 +201,18 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
 
 function RulesTab({ rules, setRules, players, saveRules }) {
   const [draft, setDraft] = useState(null)
-
   const namedPlayers = players.filter(p => p.name)
-
-  const addRule = () => setDraft(defaultRule())
 
   const saveDraft = () => {
     if (!draft.playerA || !draft.playerB || draft.playerA === draft.playerB) return
     const pA = players.find(p => p.id === draft.playerA)
     const pB = players.find(p => p.id === draft.playerB)
     const autoLabel = draft.label || `${pA?.name} ${draft.type === 'together' ? '+' : '≠'} ${pB?.name}`
-    const newRule = { ...draft, label: autoLabel }
-    const updated = [...rules, newRule]
-    saveRules(updated)
+    saveRules([...rules, { ...draft, label: autoLabel }])
     setDraft(null)
   }
 
-  const toggleRule = (id) => {
-    const updated = rules.map(r => r.id === id ? { ...r, active: !r.active } : r)
-    saveRules(updated)
-  }
-
+  const toggleRule = (id) => saveRules(rules.map(r => r.id === id ? { ...r, active: !r.active } : r))
   const deleteRule = (id) => saveRules(rules.filter(r => r.id !== id))
 
   return (
@@ -233,13 +220,9 @@ function RulesTab({ rules, setRules, players, saveRules }) {
       <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
         Named constraints applied during team generation. Toggle on/off per session.
       </p>
-
       {rules.length === 0 && !draft && (
-        <div style={{ textAlign: 'center', padding: '2rem', color: '#bbb', fontSize: 14 }}>
-          No rules yet. Add one below.
-        </div>
+        <div style={{ textAlign: 'center', padding: '2rem', color: '#bbb', fontSize: 14 }}>No rules yet.</div>
       )}
-
       {rules.map(r => {
         const pA = players.find(p => p.id === r.playerA)
         const pB = players.find(p => p.id === r.playerB)
@@ -255,22 +238,18 @@ function RulesTab({ rules, setRules, players, saveRules }) {
                 {' · '}{pA?.name} & {pB?.name}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <button onClick={() => toggleRule(r.id)}
-                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
-                  background: r.active ? '#eaf6ea' : '#f3f4f6',
-                  color: r.active ? '#5bb85b' : '#aaa',
-                  border: `1px solid ${r.active ? '#5bb85b' : '#e5e7eb'}`,
-                  fontWeight: 500 }}>
-                {r.active ? 'On' : 'Off'}
-              </button>
-              <button onClick={() => deleteRule(r.id)}
-                style={{ fontSize: 12, color: '#ccc', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
-            </div>
+            <button onClick={() => toggleRule(r.id)}
+              style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                background: r.active ? '#eaf6ea' : '#f3f4f6',
+                color: r.active ? '#5bb85b' : '#aaa',
+                border: `1px solid ${r.active ? '#5bb85b' : '#e5e7eb'}`, fontWeight: 500 }}>
+              {r.active ? 'On' : 'Off'}
+            </button>
+            <button onClick={() => deleteRule(r.id)}
+              style={{ fontSize: 12, color: '#ccc', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
           </div>
         )
       })}
-
       {draft && (
         <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
           <p style={{ fontSize: 12, fontWeight: 600, color: '#aaa', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>New rule</p>
@@ -292,31 +271,177 @@ function RulesTab({ rules, setRules, players, saveRules }) {
             </select>
           </div>
           <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })}
-            placeholder="Label (optional — auto-generated if blank)"
+            placeholder="Label (optional)"
             style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb',
               fontSize: 13, marginBottom: 10, boxSizing: 'border-box', background: '#fff' }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <button onClick={saveDraft}
               style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-                background: '#3a8fd4', color: '#fff', border: 'none', fontWeight: 500 }}>
-              Save rule
-            </button>
+                background: '#3a8fd4', color: '#fff', border: 'none', fontWeight: 500 }}>Save rule</button>
             <button onClick={() => setDraft(null)}
               style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
-                background: 'transparent', color: '#888', border: '1px solid #e5e7eb' }}>
-              Cancel
-            </button>
+                background: 'transparent', color: '#888', border: '1px solid #e5e7eb' }}>Cancel</button>
           </div>
         </div>
       )}
-
       {!draft && (
-        <button onClick={addRule} style={{ width: '100%', padding: 10, fontSize: 14,
+        <button onClick={() => setDraft(defaultRule())} style={{ width: '100%', padding: 10, fontSize: 14,
           borderRadius: 10, cursor: 'pointer', marginTop: 4, border: '1px dashed #d1d5db',
           background: 'transparent', color: '#888' }}>
           + Add rule
         </button>
       )}
+    </div>
+  )
+}
+
+function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
+  const [messages, setMessages] = useState([
+    { role: 'assistant', content: "Hi! I'm your AI coach. Tell me what happened in today's game, ask me to update player stats, set team rules, or anything else about the squad." }
+  ])
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const bottomRef = useRef(null)
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }, [messages])
+
+  const applyActions = (actions, currentPlayers, currentRules) => {
+    let updatedPlayers = [...currentPlayers]
+    let updatedRules = [...currentRules]
+    const applied = []
+
+    for (const action of actions || []) {
+      if (action.type === 'updatePlayer') {
+        updatedPlayers = updatedPlayers.map(p => {
+          if (p.id == action.playerId) {
+            applied.push(`Updated ${p.name}`)
+            return { ...p, ...action.changes }
+          }
+          return p
+        })
+      } else if (action.type === 'addRule') {
+        const pA = updatedPlayers.find(p => p.id == action.playerAId)
+        const pB = updatedPlayers.find(p => p.id == action.playerBId)
+        if (pA && pB) {
+          const newRule = {
+            id: Date.now() + Math.random(),
+            label: action.label || `${pA.name} ${action.ruleType === 'together' ? '+' : '≠'} ${pB.name}`,
+            playerA: action.playerAId,
+            playerB: action.playerBId,
+            type: action.ruleType,
+            active: true
+          }
+          updatedRules = [...updatedRules, newRule]
+          applied.push(`Added rule: ${newRule.label}`)
+        }
+      } else if (action.type === 'toggleRule') {
+        updatedRules = updatedRules.map(r => r.id == action.ruleId ? { ...r, active: !r.active } : r)
+        applied.push(`Toggled rule`)
+      } else if (action.type === 'deleteRule') {
+        updatedRules = updatedRules.filter(r => r.id != action.ruleId)
+        applied.push(`Deleted rule`)
+      }
+    }
+
+    if (updatedPlayers !== currentPlayers) onPlayersUpdate(updatedPlayers)
+    if (updatedRules !== currentRules) onRulesUpdate(updatedRules)
+    return applied
+  }
+
+  const send = async () => {
+    if (!input.trim() || loading) return
+    const userMsg = input.trim()
+    setInput('')
+
+    const newMessages = [...messages, { role: 'user', content: userMsg }]
+    setMessages(newMessages)
+    setLoading(true)
+
+    // Build history for Claude (exclude the initial greeting)
+    const history = newMessages.slice(1, -1).map(m => ({
+      role: m.role === 'assistant' ? 'assistant' : 'user',
+      content: m.content
+    }))
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg, players, rules, history })
+      })
+      const data = await res.json()
+      const applied = applyActions(data.actions, players, rules)
+
+      const suffix = applied.length ? `\n\n_Applied: ${applied.join(', ')}_` : ''
+      setMessages(prev => [...prev, { role: 'assistant', content: data.message + suffix }])
+    } catch (e) {
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, something went wrong. Please try again.' }])
+    }
+    setLoading(false)
+  }
+
+  const suggestions = [
+    "Team A won 3-1 today, Musa scored twice",
+    "Put Eren and Kurt on the same team",
+    "Who are our strongest defenders?",
+    "Balance the squad better for next week"
+  ]
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '60vh', minHeight: 400 }}>
+      <div style={{ flex: 1, overflowY: 'auto', paddingBottom: 12 }}>
+        {messages.map((m, i) => (
+          <div key={i} style={{ marginBottom: 12, display: 'flex',
+            justifyContent: m.role === 'user' ? 'flex-end' : 'flex-start' }}>
+            <div style={{
+              maxWidth: '82%', padding: '10px 14px', borderRadius: 12, fontSize: 14, lineHeight: 1.5,
+              background: m.role === 'user' ? '#3a8fd4' : '#f3f4f6',
+              color: m.role === 'user' ? '#fff' : '#111',
+              borderBottomRightRadius: m.role === 'user' ? 4 : 12,
+              borderBottomLeftRadius: m.role === 'assistant' ? 4 : 12,
+              whiteSpace: 'pre-wrap'
+            }}>
+              {m.content}
+            </div>
+          </div>
+        ))}
+        {loading && (
+          <div style={{ display: 'flex', justifyContent: 'flex-start', marginBottom: 12 }}>
+            <div style={{ background: '#f3f4f6', borderRadius: 12, borderBottomLeftRadius: 4,
+              padding: '10px 14px', fontSize: 14, color: '#aaa' }}>Thinking...</div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {messages.length === 1 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+          {suggestions.map(s => (
+            <button key={s} onClick={() => setInput(s)}
+              style={{ fontSize: 12, padding: '5px 10px', borderRadius: 8, cursor: 'pointer',
+                background: '#f3f4f6', color: '#555', border: '1px solid #e5e7eb' }}>
+              {s}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div style={{ display: 'flex', gap: 8, paddingTop: 8, borderTop: '1px solid #f3f4f6' }}>
+        <input value={input} onChange={e => setInput(e.target.value)}
+          onKeyDown={e => e.key === 'Enter' && !e.shiftKey && send()}
+          placeholder="Ask your AI coach..."
+          style={{ flex: 1, padding: '10px 14px', borderRadius: 10, border: '1px solid #e5e7eb',
+            fontSize: 14, outline: 'none' }} />
+        <button onClick={send} disabled={loading || !input.trim()}
+          style={{ padding: '10px 18px', borderRadius: 10, cursor: loading ? 'not-allowed' : 'pointer',
+            background: input.trim() && !loading ? '#3a8fd4' : '#f3f4f6',
+            color: input.trim() && !loading ? '#fff' : '#aaa',
+            border: 'none', fontSize: 14, fontWeight: 500 }}>
+          Send
+        </button>
+      </div>
     </div>
   )
 }
@@ -338,7 +463,6 @@ function generateTeams(selected, players, rules) {
   if (gks.length < 2 || defs.length < 6 || mids.length < 4 || fwds.length < 2) return null
 
   const activeRules = (rules || []).filter(r => r.active)
-
   let best = null, bestDiff = Infinity
 
   for (let i = 0; i < 500; i++) {
@@ -347,28 +471,19 @@ function generateTeams(selected, players, rules) {
     const t2 = [gks[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
 
     const violates = (ta, tb) => {
-      // Player-level keepApart
       const apartViolation = ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
         || tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
-      // Player-level keepTogether (must be on same team)
       const togetherViolation = ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))
         || tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))
-
-      // Named rules
       const ruleViolation = activeRules.some(r => {
-        const aInT1 = ta.find(p => p.id === r.playerA)
-        const bInT1 = ta.find(p => p.id === r.playerB)
-        const aInT2 = tb.find(p => p.id === r.playerA)
-        const bInT2 = tb.find(p => p.id === r.playerB)
-        if (r.type === 'together') {
-          // Both must be in same team
-          return (aInT1 && bInT2) || (aInT2 && bInT1)
-        } else {
-          // Must be on different teams
-          return (aInT1 && bInT1) || (aInT2 && bInT2)
-        }
+        const aInT1 = ta.find(p => p.id == r.playerA)
+        const bInT1 = ta.find(p => p.id == r.playerB)
+        const aInT2 = tb.find(p => p.id == r.playerA)
+        const bInT2 = tb.find(p => p.id == r.playerB)
+        return r.type === 'together'
+          ? (aInT1 && bInT2) || (aInT2 && bInT1)
+          : (aInT1 && bInT1) || (aInT2 && bInT2)
       })
-
       return apartViolation || togetherViolation || ruleViolation
     }
 
@@ -484,11 +599,10 @@ export default function App() {
   const activeRules = rules.filter(r => r.active)
 
   const tabStyle = (t) => ({
-    padding: '8px 20px', fontSize: 14, cursor: 'pointer', borderRadius: 8,
+    padding: '8px 16px', fontSize: 13, cursor: 'pointer', borderRadius: 8,
     background: tab === t ? '#f3f4f6' : 'transparent',
     border: tab === t ? '1px solid #e5e7eb' : '1px solid transparent',
-    color: tab === t ? '#111' : '#888', fontWeight: tab === t ? 500 : 400,
-    position: 'relative'
+    color: tab === t ? '#111' : '#888', fontWeight: tab === t ? 500 : 400
   })
 
   if (!loaded) return <div style={{ padding: '2rem', color: '#888', fontSize: 14 }}>Loading player pool...</div>
@@ -502,14 +616,15 @@ export default function App() {
         </span>
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 24, background: '#f9fafb',
-        padding: 4, borderRadius: 10, width: 'fit-content' }}>
-        {['pool', 'rules', 'session', 'teams'].map(t => (
+      <div style={{ display: 'flex', gap: 4, marginBottom: 24, background: '#f9fafb',
+        padding: 4, borderRadius: 10, width: 'fit-content', flexWrap: 'wrap' }}>
+        {['pool', 'rules', 'session', 'teams', 'ai'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={tabStyle(t)}>
             {t === 'pool' ? 'Player pool'
               : t === 'rules' ? `Rules${activeRules.length ? ` (${activeRules.length})` : ''}`
               : t === 'session' ? 'Weekly session'
-              : 'Teams'}
+              : t === 'teams' ? 'Teams'
+              : '✦ AI Coach'}
           </button>
         ))}
       </div>
@@ -543,8 +658,7 @@ export default function App() {
           {activeRules.length > 0 && (
             <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', marginBottom: 14,
               fontSize: 12, color: '#888' }}>
-              {activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active —{' '}
-              {activeRules.map(r => r.label).join(', ')}
+              {activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active — {activeRules.map(r => r.label).join(', ')}
             </div>
           )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
@@ -606,9 +720,22 @@ export default function App() {
                     Change players
                   </button>
                 </div>
+                <div style={{ marginTop: 12, padding: '10px 14px', background: '#f9fafb',
+                  borderRadius: 10, fontSize: 12, color: '#888', textAlign: 'center' }}>
+                  After the game, go to <strong>AI Coach</strong> to report the score and update player ratings
+                </div>
               </>
           }
         </div>
+      )}
+
+      {tab === 'ai' && (
+        <AICoach
+          players={players}
+          rules={rules}
+          onPlayersUpdate={savePlayers}
+          onRulesUpdate={saveRules}
+        />
       )}
     </div>
   )
