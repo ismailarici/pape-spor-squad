@@ -3,16 +3,24 @@ import { db } from './firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 const POSITIONS = ['GK', 'DEF', 'MID', 'FWD']
-const ATTRS = ['Pace', 'Shooting', 'Defending', 'Passing']
 const FORMATION = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
 const posColor = { GK: '#e8a838', DEF: '#3a8fd4', MID: '#5bb85b', FWD: '#d45a5a' }
 const posLight = { GK: '#fff8ec', DEF: '#e8f3fc', MID: '#eaf6ea', FWD: '#fceaea' }
 
+const STATS = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
+const QUALITIES = ['Aggression', 'Leadership', 'Team Player', 'Work Rate']
+const LEVELS = ['Low', 'Med', 'High']
+const levelColor = { Low: '#aaa', Med: '#3a8fd4', High: '#e8a838' }
+
 const defaultPlayer = () => ({
   id: Date.now() + Math.random(),
-  name: '', position: 'MID', stars: 3,
-  pace: 5, shooting: 5, defending: 5, passing: 5, keepApart: []
+  name: '', position: 'MID', stars: 3, age: 25,
+  pace: 5, shooting: 5, passing: 5, dribbling: 5, defending: 5, physical: 5,
+  aggression: 'Med', leadership: 'Med', teamPlayer: 'Med', workRate: 'Med',
+  keepApart: [], keepTogether: []
 })
+
+const qualityKey = q => q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
 
 function Stars({ value, onChange }) {
   return (
@@ -32,7 +40,41 @@ function Slider({ label, value, onChange }) {
       <span style={{ fontSize: 12, color: '#666', width: 72 }}>{label}</span>
       <input type="range" min={1} max={10} step={1} value={value}
         onChange={e => onChange(+e.target.value)} style={{ flex: 1 }} />
-      <span style={{ fontSize: 12, fontWeight: 500, width: 16, textAlign: 'right' }}>{value}</span>
+      <span style={{ fontSize: 12, fontWeight: 600, width: 16, textAlign: 'right',
+        color: value >= 8 ? '#5bb85b' : value <= 3 ? '#d45a5a' : '#555' }}>{value}</span>
+    </div>
+  )
+}
+
+function QualityToggle({ label, value, onChange }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+      <span style={{ fontSize: 12, color: '#666', width: 80 }}>{label}</span>
+      <div style={{ display: 'flex', gap: 4 }}>
+        {LEVELS.map(l => (
+          <button key={l} onClick={() => onChange(l)}
+            style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+              background: value === l ? levelColor[l] : 'transparent',
+              color: value === l ? '#fff' : '#aaa',
+              border: `1px solid ${value === l ? levelColor[l] : '#e5e7eb'}`,
+              fontWeight: value === l ? 600 : 400 }}>
+            {l}
+          </button>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function StatBar({ label, value }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 3 }}>
+      <span style={{ fontSize: 10, color: '#999', width: 58 }}>{label}</span>
+      <div style={{ flex: 1, height: 5, background: '#f0f0f0', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ width: `${value * 10}%`, height: '100%', borderRadius: 3,
+          background: value >= 8 ? '#5bb85b' : value >= 5 ? '#3a8fd4' : '#d45a5a' }} />
+      </div>
+      <span style={{ fontSize: 10, fontWeight: 600, color: '#666', width: 14 }}>{value}</span>
     </div>
   )
 }
@@ -41,11 +83,9 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
   const [expanded, setExpanded] = useState(false)
   const p = player
 
-  const toggleApart = (id) => {
-    const ka = p.keepApart.includes(id)
-      ? p.keepApart.filter(x => x !== id)
-      : [...p.keepApart, id]
-    onUpdate({ ...p, keepApart: ka })
+  const toggleRelation = (id, field) => {
+    const list = p[field] || []
+    onUpdate({ ...p, [field]: list.includes(id) ? list.filter(x => x !== id) : [...list, id] })
   }
 
   if (compact) return (
@@ -58,6 +98,7 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
         {p.position}
       </div>
       <span style={{ flex: 1, fontWeight: 500, fontSize: 14 }}>{p.name || 'Unnamed'}</span>
+      {p.age && <span style={{ fontSize: 11, color: '#aaa' }}>{p.age}y</span>}
       <Stars value={p.stars} />
     </div>
   )
@@ -66,10 +107,17 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
     <div style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12, padding: '14px 16px', marginBottom: 10 }}>
       <div style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
-          <input value={p.name} onChange={e => onUpdate({ ...p, name: e.target.value })}
-            placeholder="Player name"
-            style={{ width: '100%', marginBottom: 8, fontSize: 14, padding: '6px 10px',
-              border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }} />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input value={p.name} onChange={e => onUpdate({ ...p, name: e.target.value })}
+              placeholder="Player name"
+              style={{ flex: 1, fontSize: 14, padding: '6px 10px',
+                border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }} />
+            <input type="number" value={p.age} min={15} max={50}
+              onChange={e => onUpdate({ ...p, age: +e.target.value })}
+              placeholder="Age"
+              style={{ width: 60, fontSize: 14, padding: '6px 8px', textAlign: 'center',
+                border: '1px solid #e5e7eb', borderRadius: 8, outline: 'none' }} />
+          </div>
           <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
             {POSITIONS.map(pos => (
               <button key={pos} onClick={() => onUpdate({ ...p, position: pos })}
@@ -97,25 +145,51 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
           </button>
         </div>
       </div>
+
+      {!expanded && (
+        <div style={{ marginTop: 10, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px' }}>
+          {STATS.map(s => <StatBar key={s} label={s} value={p[s.toLowerCase()] ?? 5} />)}
+        </div>
+      )}
+
       {expanded && (
-        <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12, marginTop: 8 }}>
-          {ATTRS.map(attr => (
-            <Slider key={attr} label={attr} value={p[attr.toLowerCase()]}
-              onChange={v => onUpdate({ ...p, [attr.toLowerCase()]: v })} />
+        <div style={{ borderTop: '1px solid #f3f4f6', paddingTop: 12, marginTop: 10 }}>
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Stats</p>
+          {STATS.map(s => (
+            <Slider key={s} label={s} value={p[s.toLowerCase()] ?? 5}
+              onChange={v => onUpdate({ ...p, [s.toLowerCase()]: v })} />
           ))}
-          <div style={{ marginTop: 10 }}>
-            <p style={{ fontSize: 12, color: '#888', marginBottom: 6 }}>Keep apart from:</p>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-              {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
-                <button key={q.id} onClick={() => toggleApart(q.id)}
-                  style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
-                    background: p.keepApart.includes(q.id) ? '#fceaea' : 'transparent',
-                    color: p.keepApart.includes(q.id) ? '#d45a5a' : '#888',
-                    border: `1px solid ${p.keepApart.includes(q.id) ? '#d45a5a' : '#e5e7eb'}` }}>
-                  {q.name}
-                </button>
-              ))}
-            </div>
+
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 8px', textTransform: 'uppercase', letterSpacing: 1 }}>Qualities</p>
+          {QUALITIES.map(q => (
+            <QualityToggle key={q} label={q} value={p[qualityKey(q)] || 'Med'}
+              onChange={v => onUpdate({ ...p, [qualityKey(q)]: v })} />
+          ))}
+
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Keep apart from</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
+            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
+              <button key={q.id} onClick={() => toggleRelation(q.id, 'keepApart')}
+                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                  background: (p.keepApart||[]).includes(q.id) ? '#fceaea' : 'transparent',
+                  color: (p.keepApart||[]).includes(q.id) ? '#d45a5a' : '#888',
+                  border: `1px solid ${(p.keepApart||[]).includes(q.id) ? '#d45a5a' : '#e5e7eb'}` }}>
+                {q.name}
+              </button>
+            ))}
+          </div>
+
+          <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Gets along well with</p>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+            {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
+              <button key={q.id} onClick={() => toggleRelation(q.id, 'keepTogether')}
+                style={{ fontSize: 11, padding: '2px 8px', borderRadius: 6, cursor: 'pointer',
+                  background: (p.keepTogether||[]).includes(q.id) ? '#eaf6ea' : 'transparent',
+                  color: (p.keepTogether||[]).includes(q.id) ? '#5bb85b' : '#888',
+                  border: `1px solid ${(p.keepTogether||[]).includes(q.id) ? '#5bb85b' : '#e5e7eb'}` }}>
+                {q.name}
+              </button>
+            ))}
           </div>
         </div>
       )}
@@ -124,8 +198,8 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
 }
 
 function playerScore(p) {
-  const attrAvg = (p.pace + p.shooting + p.defending + p.passing) / 4
-  return p.stars * 0.6 + (attrAvg / 10) * 5 * 0.4
+  const statAvg = (p.pace + p.shooting + p.passing + p.dribbling + p.defending + p.physical) / 6
+  return p.stars * 0.6 + (statAvg / 10) * 5 * 0.4
 }
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
@@ -141,12 +215,20 @@ function generateTeams(selected, players) {
 
   let best = null, bestDiff = Infinity
 
-  for (let i = 0; i < 300; i++) {
+  for (let i = 0; i < 500; i++) {
     const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds)
     const t1 = [gks[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
     const t2 = [gks[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
-    const violates = (t) => t.some(a => t.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
-    if (violates(t1) || violates(t2)) continue
+
+    const violates = (ta, tb) => {
+      const apartViolation = ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
+        || tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
+      const togetherViolation = ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))
+        || tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))
+      return apartViolation || togetherViolation
+    }
+
+    if (violates(t1, t2)) continue
     const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
     const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
     const diff = Math.abs(s1 - s2)
@@ -170,6 +252,7 @@ function TeamDisplay({ team, label, score, color }) {
             <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 0',
               borderBottom: '1px solid #f3f4f6' }}>
               <span style={{ flex: 1, fontSize: 14 }}>{p.name}</span>
+              {p.age && <span style={{ fontSize: 11, color: '#bbb' }}>{p.age}</span>}
               <Stars value={p.stars} />
             </div>
           ))}
@@ -178,8 +261,6 @@ function TeamDisplay({ team, label, score, color }) {
     </div>
   )
 }
-
-const FIRESTORE_DOC = 'shared/players'
 
 export default function App() {
   const [tab, setTab] = useState('pool')
@@ -212,7 +293,11 @@ export default function App() {
   const updatePlayer = (p) => savePlayers(players.map(x => x.id === p.id ? p : x))
   const deletePlayer = (id) => {
     setSelected(s => s.filter(x => x !== id))
-    savePlayers(players.filter(x => x.id !== id).map(x => ({ ...x, keepApart: (x.keepApart||[]).filter(k => k !== id) })))
+    savePlayers(players.filter(x => x.id !== id).map(x => ({
+      ...x,
+      keepApart: (x.keepApart||[]).filter(k => k !== id),
+      keepTogether: (x.keepTogether||[]).filter(k => k !== id)
+    })))
   }
 
   const selCounts = POSITIONS.reduce((acc, pos) => {
@@ -235,7 +320,7 @@ export default function App() {
 
   const generate = () => {
     const result = generateTeams(selected, players)
-    if (!result) setError('Could not balance teams with keep-apart rules. Try relaxing some constraints.')
+    if (!result) setError('Could not balance teams. Try relaxing keep-apart or gets-along-with constraints.')
     else { setTeams(result); setError(''); setTab('teams') }
   }
 
@@ -249,7 +334,7 @@ export default function App() {
   if (!loaded) return <div style={{ padding: '2rem', color: '#888', fontSize: 14 }}>Loading player pool...</div>
 
   return (
-    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 680, margin: '0 auto' }}>
+    <div style={{ fontFamily: 'system-ui, sans-serif', padding: '1.5rem', maxWidth: 720, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
         <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600 }}>⚽ Pape Spor Squad</h2>
         <span style={{ fontSize: 12, color: '#888' }}>
@@ -269,7 +354,7 @@ export default function App() {
       {tab === 'pool' && (
         <div>
           <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
-            Shared roster — changes save instantly for everyone. Set position, star rating, and attributes per player.
+            Shared roster — changes save instantly for everyone.
           </p>
           {players.map(p => (
             <PlayerCard key={p.id} player={p} allPlayers={players}
