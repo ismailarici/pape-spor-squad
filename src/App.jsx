@@ -20,6 +20,15 @@ const defaultPlayer = () => ({
   keepApart: [], keepTogether: []
 })
 
+const defaultRule = () => ({
+  id: Date.now() + Math.random(),
+  label: '',
+  playerA: null,
+  playerB: null,
+  type: 'together',
+  active: true
+})
+
 const qualityKey = q => q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
 
 function Stars({ value, onChange }) {
@@ -159,13 +168,11 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
             <Slider key={s} label={s} value={p[s.toLowerCase()] ?? 5}
               onChange={v => onUpdate({ ...p, [s.toLowerCase()]: v })} />
           ))}
-
           <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 8px', textTransform: 'uppercase', letterSpacing: 1 }}>Qualities</p>
           {QUALITIES.map(q => (
             <QualityToggle key={q} label={q} value={p[qualityKey(q)] || 'Med'}
               onChange={v => onUpdate({ ...p, [qualityKey(q)]: v })} />
           ))}
-
           <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '12px 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Keep apart from</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 10 }}>
             {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
@@ -178,7 +185,6 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
               </button>
             ))}
           </div>
-
           <p style={{ fontSize: 11, fontWeight: 600, color: '#aaa', margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 1 }}>Gets along well with</p>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {allPlayers.filter(q => q.id !== p.id && q.name).map(q => (
@@ -197,6 +203,124 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
   )
 }
 
+function RulesTab({ rules, setRules, players, saveRules }) {
+  const [draft, setDraft] = useState(null)
+
+  const namedPlayers = players.filter(p => p.name)
+
+  const addRule = () => setDraft(defaultRule())
+
+  const saveDraft = () => {
+    if (!draft.playerA || !draft.playerB || draft.playerA === draft.playerB) return
+    const pA = players.find(p => p.id === draft.playerA)
+    const pB = players.find(p => p.id === draft.playerB)
+    const autoLabel = draft.label || `${pA?.name} ${draft.type === 'together' ? '+' : '≠'} ${pB?.name}`
+    const newRule = { ...draft, label: autoLabel }
+    const updated = [...rules, newRule]
+    saveRules(updated)
+    setDraft(null)
+  }
+
+  const toggleRule = (id) => {
+    const updated = rules.map(r => r.id === id ? { ...r, active: !r.active } : r)
+    saveRules(updated)
+  }
+
+  const deleteRule = (id) => saveRules(rules.filter(r => r.id !== id))
+
+  return (
+    <div>
+      <p style={{ fontSize: 13, color: '#888', marginBottom: 16 }}>
+        Named constraints applied during team generation. Toggle on/off per session.
+      </p>
+
+      {rules.length === 0 && !draft && (
+        <div style={{ textAlign: 'center', padding: '2rem', color: '#bbb', fontSize: 14 }}>
+          No rules yet. Add one below.
+        </div>
+      )}
+
+      {rules.map(r => {
+        const pA = players.find(p => p.id === r.playerA)
+        const pB = players.find(p => p.id === r.playerB)
+        return (
+          <div key={r.id} style={{ background: '#fff', border: '1px solid #e5e7eb', borderRadius: 12,
+            padding: '12px 16px', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 14, fontWeight: 500, color: r.active ? '#111' : '#aaa' }}>{r.label}</div>
+              <div style={{ fontSize: 12, color: '#aaa', marginTop: 2 }}>
+                <span style={{ color: r.type === 'together' ? '#5bb85b' : '#d45a5a', fontWeight: 500 }}>
+                  {r.type === 'together' ? 'Same team' : 'Different teams'}
+                </span>
+                {' · '}{pA?.name} & {pB?.name}
+              </div>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={() => toggleRule(r.id)}
+                style={{ fontSize: 12, padding: '4px 10px', borderRadius: 8, cursor: 'pointer',
+                  background: r.active ? '#eaf6ea' : '#f3f4f6',
+                  color: r.active ? '#5bb85b' : '#aaa',
+                  border: `1px solid ${r.active ? '#5bb85b' : '#e5e7eb'}`,
+                  fontWeight: 500 }}>
+                {r.active ? 'On' : 'Off'}
+              </button>
+              <button onClick={() => deleteRule(r.id)}
+                style={{ fontSize: 12, color: '#ccc', background: 'none', border: 'none', cursor: 'pointer' }}>✕</button>
+            </div>
+          </div>
+        )
+      })}
+
+      {draft && (
+        <div style={{ background: '#f9fafb', border: '1px dashed #d1d5db', borderRadius: 12, padding: '14px 16px', marginBottom: 8 }}>
+          <p style={{ fontSize: 12, fontWeight: 600, color: '#aaa', marginBottom: 10, textTransform: 'uppercase', letterSpacing: 1 }}>New rule</p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 10 }}>
+            <select value={draft.playerA || ''} onChange={e => setDraft({ ...draft, playerA: e.target.value })}
+              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              <option value=''>Player A</option>
+              {namedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+            <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value })}
+              style={{ padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              <option value='together'>Same team</option>
+              <option value='apart'>Different teams</option>
+            </select>
+            <select value={draft.playerB || ''} onChange={e => setDraft({ ...draft, playerB: e.target.value })}
+              style={{ flex: 1, padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb', fontSize: 13, background: '#fff' }}>
+              <option value=''>Player B</option>
+              {namedPlayers.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })}
+            placeholder="Label (optional — auto-generated if blank)"
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 8, border: '1px solid #e5e7eb',
+              fontSize: 13, marginBottom: 10, boxSizing: 'border-box', background: '#fff' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={saveDraft}
+              style={{ flex: 1, padding: '8px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                background: '#3a8fd4', color: '#fff', border: 'none', fontWeight: 500 }}>
+              Save rule
+            </button>
+            <button onClick={() => setDraft(null)}
+              style={{ padding: '8px 16px', borderRadius: 8, cursor: 'pointer', fontSize: 13,
+                background: 'transparent', color: '#888', border: '1px solid #e5e7eb' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!draft && (
+        <button onClick={addRule} style={{ width: '100%', padding: 10, fontSize: 14,
+          borderRadius: 10, cursor: 'pointer', marginTop: 4, border: '1px dashed #d1d5db',
+          background: 'transparent', color: '#888' }}>
+          + Add rule
+        </button>
+      )}
+    </div>
+  )
+}
+
 function playerScore(p) {
   const statAvg = (p.pace + p.shooting + p.passing + p.dribbling + p.defending + p.physical) / 6
   return p.stars * 0.6 + (statAvg / 10) * 5 * 0.4
@@ -204,7 +328,7 @@ function playerScore(p) {
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
 
-function generateTeams(selected, players) {
+function generateTeams(selected, players, rules) {
   const pool = players.filter(p => selected.includes(p.id))
   const gks = pool.filter(p => p.position === 'GK')
   const defs = pool.filter(p => p.position === 'DEF')
@@ -212,6 +336,8 @@ function generateTeams(selected, players) {
   const fwds = pool.filter(p => p.position === 'FWD')
 
   if (gks.length < 2 || defs.length < 6 || mids.length < 4 || fwds.length < 2) return null
+
+  const activeRules = (rules || []).filter(r => r.active)
 
   let best = null, bestDiff = Infinity
 
@@ -221,11 +347,29 @@ function generateTeams(selected, players) {
     const t2 = [gks[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
 
     const violates = (ta, tb) => {
+      // Player-level keepApart
       const apartViolation = ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
         || tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))
+      // Player-level keepTogether (must be on same team)
       const togetherViolation = ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))
         || tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))
-      return apartViolation || togetherViolation
+
+      // Named rules
+      const ruleViolation = activeRules.some(r => {
+        const aInT1 = ta.find(p => p.id === r.playerA)
+        const bInT1 = ta.find(p => p.id === r.playerB)
+        const aInT2 = tb.find(p => p.id === r.playerA)
+        const bInT2 = tb.find(p => p.id === r.playerB)
+        if (r.type === 'together') {
+          // Both must be in same team
+          return (aInT1 && bInT2) || (aInT2 && bInT1)
+        } else {
+          // Must be on different teams
+          return (aInT1 && bInT1) || (aInT2 && bInT2)
+        }
+      })
+
+      return apartViolation || togetherViolation || ruleViolation
     }
 
     if (violates(t1, t2)) continue
@@ -265,6 +409,7 @@ function TeamDisplay({ team, label, score, color }) {
 export default function App() {
   const [tab, setTab] = useState('pool')
   const [players, setPlayers] = useState([])
+  const [rules, setRules] = useState([])
   const [selected, setSelected] = useState([])
   const [teams, setTeams] = useState(null)
   const [error, setError] = useState('')
@@ -274,8 +419,12 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const snap = await getDoc(doc(db, 'shared', 'players'))
-        if (snap.exists()) setPlayers(snap.data().list || [])
+        const [pSnap, rSnap] = await Promise.all([
+          getDoc(doc(db, 'shared', 'players')),
+          getDoc(doc(db, 'shared', 'rules'))
+        ])
+        if (pSnap.exists()) setPlayers(pSnap.data().list || [])
+        if (rSnap.exists()) setRules(rSnap.data().list || [])
       } catch (e) { console.error('Load error', e) }
       setLoaded(true)
     })()
@@ -285,6 +434,14 @@ export default function App() {
     setPlayers(updated)
     setSaving(true)
     try { await setDoc(doc(db, 'shared', 'players'), { list: updated }) }
+    catch (e) { console.error('Save error', e) }
+    setSaving(false)
+  }
+
+  const saveRules = async (updated) => {
+    setRules(updated)
+    setSaving(true)
+    try { await setDoc(doc(db, 'shared', 'rules'), { list: updated }) }
     catch (e) { console.error('Save error', e) }
     setSaving(false)
   }
@@ -319,16 +476,19 @@ export default function App() {
   const readyToGenerate = POSITIONS.every(pos => selCounts[pos] === FORMATION[pos])
 
   const generate = () => {
-    const result = generateTeams(selected, players)
-    if (!result) setError('Could not balance teams. Try relaxing keep-apart or gets-along-with constraints.')
+    const result = generateTeams(selected, players, rules)
+    if (!result) setError('Could not balance teams with current constraints. Try toggling some rules off.')
     else { setTeams(result); setError(''); setTab('teams') }
   }
+
+  const activeRules = rules.filter(r => r.active)
 
   const tabStyle = (t) => ({
     padding: '8px 20px', fontSize: 14, cursor: 'pointer', borderRadius: 8,
     background: tab === t ? '#f3f4f6' : 'transparent',
     border: tab === t ? '1px solid #e5e7eb' : '1px solid transparent',
-    color: tab === t ? '#111' : '#888', fontWeight: tab === t ? 500 : 400
+    color: tab === t ? '#111' : '#888', fontWeight: tab === t ? 500 : 400,
+    position: 'relative'
   })
 
   if (!loaded) return <div style={{ padding: '2rem', color: '#888', fontSize: 14 }}>Loading player pool...</div>
@@ -344,9 +504,12 @@ export default function App() {
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 24, background: '#f9fafb',
         padding: 4, borderRadius: 10, width: 'fit-content' }}>
-        {['pool', 'session', 'teams'].map(t => (
+        {['pool', 'rules', 'session', 'teams'].map(t => (
           <button key={t} onClick={() => setTab(t)} style={tabStyle(t)}>
-            {t === 'pool' ? 'Player pool' : t === 'session' ? 'Weekly session' : 'Teams'}
+            {t === 'pool' ? 'Player pool'
+              : t === 'rules' ? `Rules${activeRules.length ? ` (${activeRules.length})` : ''}`
+              : t === 'session' ? 'Weekly session'
+              : 'Teams'}
           </button>
         ))}
       </div>
@@ -368,11 +531,22 @@ export default function App() {
         </div>
       )}
 
+      {tab === 'rules' && (
+        <RulesTab rules={rules} setRules={setRules} players={players} saveRules={saveRules} />
+      )}
+
       {tab === 'session' && (
         <div>
           <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
             Select 2 GK · 6 DEF · 4 MID · 2 FWD for today's game.
           </p>
+          {activeRules.length > 0 && (
+            <div style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', marginBottom: 14,
+              fontSize: 12, color: '#888' }}>
+              {activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active —{' '}
+              {activeRules.map(r => r.label).join(', ')}
+            </div>
+          )}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
             {POSITIONS.map(pos => (
               <div key={pos} style={{ background: '#f9fafb', borderRadius: 8, padding: '8px 12px', textAlign: 'center' }}>
@@ -421,7 +595,7 @@ export default function App() {
                   <TeamDisplay team={teams.t2} label="Team B" score={teams.s2} color="#5bb85b" />
                 </div>
                 <div style={{ marginTop: 16, display: 'flex', gap: 10 }}>
-                  <button onClick={() => setTeams(generateTeams(selected, players))}
+                  <button onClick={() => setTeams(generateTeams(selected, players, rules))}
                     style={{ flex: 1, padding: 10, fontSize: 14, borderRadius: 10, cursor: 'pointer',
                       border: '1px solid #e5e7eb', background: 'transparent', color: '#111' }}>
                     Regenerate
