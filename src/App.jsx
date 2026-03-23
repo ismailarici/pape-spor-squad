@@ -31,8 +31,8 @@ const defaultPlayer = () => ({
 })
 
 function playerScore(p) {
-  const avg = (p.pace + p.shooting + p.passing + p.dribbling + p.defending + p.physical) / 6
-  return p.stars * 0.6 + (avg / 10) * 5 * 0.4
+  const avg = ((p.pace||5) + (p.shooting||5) + (p.passing||5) + (p.dribbling||5) + (p.defending||5) + (p.physical||5)) / 6
+  return (p.stars||3) * 0.6 + (avg / 10) * 5 * 0.4
 }
 
 function shuffle(arr) {
@@ -464,21 +464,21 @@ function HistoryTab({ history, players, teams, saveHistory }) {
           <SectionLabel>Log game result</SectionLabel>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
             <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>TEAM A</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>BLACK</div>
               <input type="number" min={0} max={99} value={gameForm.scoreA}
                 onChange={e => setGameForm({ ...gameForm, scoreA: e.target.value })}
                 style={{ width: '100%', fontSize: 28, fontWeight: 800, textAlign: 'center',
                   padding: '8px', border: `2px solid ${C.border}`, borderRadius: 12,
-                  color: '#3b82f6', background: '#dbeafe' }} />
+                  color: '#1f2937', background: '#f1f5f9' }} />
             </div>
             <span style={{ fontSize: 20, color: C.muted, fontWeight: 700 }}>–</span>
             <div style={{ flex: 1, textAlign: 'center' }}>
-              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>TEAM B</div>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>WHITE</div>
               <input type="number" min={0} max={99} value={gameForm.scoreB}
                 onChange={e => setGameForm({ ...gameForm, scoreB: e.target.value })}
                 style={{ width: '100%', fontSize: 28, fontWeight: 800, textAlign: 'center',
                   padding: '8px', border: `2px solid ${C.border}`, borderRadius: 12,
-                  color: '#22c55e', background: '#dcfce7' }} />
+                  color: '#6b7280', background: '#f9fafb' }} />
             </div>
           </div>
           <input value={gameForm.note} onChange={e => setGameForm({ ...gameForm, note: e.target.value })}
@@ -560,23 +560,23 @@ function HistoryTab({ history, players, teams, saveHistory }) {
                 <div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, marginBottom: 2 }}>TEAM A</div>
-                      <div style={{ fontSize: 28, fontWeight: 800, color: '#3b82f6', lineHeight: 1 }}>{e.scoreA}</div>
+                      <div style={{ fontSize: 11, color: '#1f2937', fontWeight: 700, marginBottom: 2 }}>BLACK</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#1f2937', lineHeight: 1 }}>{e.scoreA}</div>
                     </div>
                     <div style={{ fontSize: 16, color: C.muted, fontWeight: 700, flex: 1, textAlign: 'center' }}>–</div>
                     <div style={{ textAlign: 'center' }}>
-                      <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 700, marginBottom: 2 }}>TEAM B</div>
-                      <div style={{ fontSize: 28, fontWeight: 800, color: '#22c55e', lineHeight: 1 }}>{e.scoreB}</div>
+                      <div style={{ fontSize: 11, color: '#6b7280', fontWeight: 700, marginBottom: 2 }}>WHITE</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#6b7280', lineHeight: 1 }}>{e.scoreB}</div>
                     </div>
                     <div style={{ flex: 2, fontSize: 12, color: C.sub }}>
-                      {e.scoreA > e.scoreB ? '🏆 Team A won' : e.scoreB > e.scoreA ? '🏆 Team B won' : '🤝 Draw'}
+                      {e.scoreA > e.scoreB ? '🏆 Black won' : e.scoreB > e.scoreA ? '🏆 White won' : '🤝 Draw'}
                     </div>
                   </div>
                   {e.teamANames?.length > 0 && (
                     <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
-                      <span style={{ color: '#3b82f6', fontWeight: 600 }}>A: </span>{e.teamANames.join(', ')}
+                      <span style={{ color: '#1f2937', fontWeight: 600 }}>Black: </span>{e.teamANames.join(', ')}
                       <br />
-                      <span style={{ color: '#22c55e', fontWeight: 600 }}>B: </span>{e.teamBNames?.join(', ')}
+                      <span style={{ color: '#6b7280', fontWeight: 600 }}>White: </span>{e.teamBNames?.join(', ')}
                     </div>
                   )}
                   {e.note && <p style={{ fontSize: 12, color: C.sub, marginTop: 6, fontStyle: 'italic' }}>"{e.note}"</p>}
@@ -642,7 +642,10 @@ function generateTeams(selected, players, rules) {
   const mids = pool.filter(p => p.position === 'MID')
   const fwds = pool.filter(p => p.position === 'FWD')
 
-  if (gks.length >= 2 && defs.length >= 6 && mids.length >= 4 && fwds.length >= 2) {
+  const hasCorrectFormation = gks.length >= 2 && defs.length >= 6 && mids.length >= 4 && fwds.length >= 2
+
+  // Tier 1: correct formation (1GK+3DEF+2MID+1FWD per team), respects rules
+  if (hasCorrectFormation) {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
       const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
@@ -657,21 +660,22 @@ function generateTeams(selected, players, rules) {
     if (best) return best
   }
 
-  // Fallback: score-based split ignoring positions, still respecting rules
-  let best = null, bestDiff = Infinity
-  for (let i = 0; i < 800; i++) {
-    const sp = shuffle(pool)
-    const t1 = sp.slice(0, half)
-    const t2 = sp.slice(half)
-    if (bad(t1, t2)) continue
-    const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
-    const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
-    const diff = Math.abs(s1 - s2)
-    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, fallback: true } }
+  // Tier 2: correct formation, ignores rules (rules conflict — still keeps positions)
+  if (hasCorrectFormation) {
+    let best = null, bestDiff = Infinity
+    for (let i = 0; i < 500; i++) {
+      const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
+      const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
+      const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
+      const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+      const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+      const diff = Math.abs(s1 - s2)
+      if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, rulesIgnored: true } }
+    }
+    if (best) return best
   }
-  if (best) return best
 
-  // Final fallback: deterministic snake-draft by score — always succeeds
+  // Tier 3: deterministic snake-draft by score — always succeeds (wrong position mix)
   const sorted = [...pool].sort((a, b) => playerScore(b) - playerScore(a))
   const t1 = [], t2 = []
   sorted.forEach((p, i) => (i % 2 === 0 ? t1 : t2).push(p))
@@ -682,14 +686,15 @@ function generateTeams(selected, players, rules) {
 
 // ─── Team Display ─────────────────────────────────────────────────────────────
 
-function TeamDisplay({ team, label, score, color }) {
+function TeamDisplay({ team, label, score, color, textColor = '#fff' }) {
   const byPos = POSITIONS.reduce((acc, pos) => { acc[pos] = team.filter(p => p.position === pos); return acc }, {})
   return (
     <div style={{ flex: 1, minWidth: 260, background: C.card, borderRadius: 16,
       border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-      <div style={{ background: color, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>{label}</span>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Score {score.toFixed(1)}</span>
+      <div style={{ background: color, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        borderBottom: textColor !== '#fff' ? `1px solid ${C.border}` : 'none' }}>
+        <span style={{ fontWeight: 700, fontSize: 16, color: textColor }}>{label}</span>
+        <span style={{ fontSize: 12, color: textColor === '#fff' ? 'rgba(255,255,255,0.8)' : '#6b7280', fontWeight: 500 }}>Score {score.toFixed(1)}</span>
       </div>
       <div style={{ padding: '12px 16px' }}>
         {POSITIONS.map(pos => byPos[pos].length > 0 && (
@@ -804,7 +809,7 @@ function AICoach({ players, rules, history, onPlayersUpdate, onRulesUpdate, onHi
   }
 
   const suggestions = [
-    "Team A won 3-1, Musa scored twice",
+    "Black won 3-1, Musa scored twice",
     "Put Eren and Kurt on the same team",
     "Who are our weakest defenders?",
     "Suggest improvements for next week",
@@ -1112,8 +1117,8 @@ export default function App() {
             ) : (
               <>
                 <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', marginBottom: 16 }}>
-                  <TeamDisplay team={teams.t1} label="Team A" score={teams.s1} color="#3b82f6" />
-                  <TeamDisplay team={teams.t2} label="Team B" score={teams.s2} color="#22c55e" />
+                  <TeamDisplay team={teams.t1} label="Black" score={teams.s1} color="#1f2937" />
+                  <TeamDisplay team={teams.t2} label="White" score={teams.s2} color="#f8fafc" textColor="#1f2937" />
                 </div>
                 <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
                   <Btn style={{ flex: 1 }} onClick={() => setTeams(generateTeams(selected, players, rules))}>Regenerate</Btn>
