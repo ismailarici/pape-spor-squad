@@ -4,43 +4,30 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const POSITIONS = ['GK', 'DEF', 'MID', 'FWD']
-const FORMATION = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
+const POSITIONS  = ['GK', 'DEF', 'MID', 'FWD']
+const FORMATION  = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
 const POS_COLOR  = { GK: '#f59e0b', DEF: '#3b82f6', MID: '#22c55e', FWD: '#ef4444' }
 const POS_BG     = { GK: '#fef3c7', DEF: '#dbeafe', MID: '#dcfce7', FWD: '#fee2e2' }
 
-const STATS    = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
+const STATS     = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
 const QUALITIES = ['Aggression', 'Leadership', 'Team Player', 'Work Rate']
-const LEVELS   = ['Low', 'Med', 'High']
+const LEVELS    = ['Low', 'Med', 'High']
 const LEVEL_COLOR = { Low: '#9ca3af', Med: '#3b82f6', High: '#f59e0b' }
 
 const C = {
-  header:  '#0f172a',
-  accent:  '#22c55e',
-  card:    '#ffffff',
-  bg:      '#f1f5f9',
-  border:  '#e2e8f0',
-  muted:   '#94a3b8',
-  text:    '#0f172a',
-  sub:     '#475569',
+  header: '#0f172a', accent: '#22c55e', card: '#ffffff',
+  bg: '#f1f5f9', border: '#e2e8f0', muted: '#94a3b8', text: '#0f172a', sub: '#475569',
 }
-
-// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const qualityKey = q =>
   q === 'Team Player' ? 'teamPlayer' : q === 'Work Rate' ? 'workRate' : q.toLowerCase()
 
 const defaultPlayer = () => ({
   id: Date.now() + Math.random(),
-  name: '', position: 'MID', stars: 3, age: 25,
+  name: '', position: 'MID', secondaryPositions: [], stars: 3, age: 25,
   pace: 5, shooting: 5, passing: 5, dribbling: 5, defending: 5, physical: 5,
   aggression: 'Med', leadership: 'Med', teamPlayer: 'Med', workRate: 'Med',
   keepApart: [], keepTogether: []
-})
-
-const defaultRule = () => ({
-  id: Date.now() + Math.random(),
-  label: '', playerA: null, playerB: null, type: 'together', active: true
 })
 
 function playerScore(p) {
@@ -50,7 +37,12 @@ function playerScore(p) {
 
 function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
 
-// ─── Small UI pieces ─────────────────────────────────────────────────────────
+function formatDate(ts) {
+  const d = new Date(ts)
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
+// ─── Small UI ────────────────────────────────────────────────────────────────
 
 function Stars({ value, onChange, size = 16 }) {
   return (
@@ -64,24 +56,22 @@ function Stars({ value, onChange, size = 16 }) {
   )
 }
 
-function Badge({ pos }) {
+function Badge({ pos, small }) {
   return (
     <span style={{ background: POS_BG[pos], color: POS_COLOR[pos], borderRadius: 6,
-      padding: '2px 8px', fontSize: 11, fontWeight: 700, letterSpacing: 0.3 }}>
+      padding: small ? '1px 5px' : '2px 8px', fontSize: small ? 10 : 11, fontWeight: 700, letterSpacing: 0.3 }}>
       {pos}
     </span>
   )
 }
 
 function StatBar({ label, value }) {
-  const pct = value * 10
   const color = value >= 8 ? '#22c55e' : value >= 6 ? '#3b82f6' : value >= 4 ? '#f59e0b' : '#ef4444'
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
       <span style={{ fontSize: 10, color: C.muted, width: 60, flexShrink: 0 }}>{label}</span>
       <div style={{ flex: 1, height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
-        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 99,
-          transition: 'width 0.3s ease' }} />
+        <div style={{ width: `${value * 10}%`, height: '100%', background: color, borderRadius: 99, transition: 'width 0.3s' }} />
       </div>
       <span style={{ fontSize: 11, fontWeight: 700, color, width: 16, textAlign: 'right' }}>{value}</span>
     </div>
@@ -94,8 +84,7 @@ function Slider({ label, value, onChange }) {
     <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 6 }}>
       <span style={{ fontSize: 12, color: C.sub, width: 70, flexShrink: 0 }}>{label}</span>
       <input type="range" min={1} max={10} step={1} value={value}
-        onChange={e => onChange(+e.target.value)}
-        style={{ flex: 1, accentColor: color }} />
+        onChange={e => onChange(+e.target.value)} style={{ flex: 1, accentColor: color }} />
       <span style={{ fontSize: 13, fontWeight: 700, color, width: 18, textAlign: 'right' }}>{value}</span>
     </div>
   )
@@ -112,7 +101,7 @@ function QualityToggle({ label, value, onChange }) {
               background: value === l ? LEVEL_COLOR[l] : 'transparent',
               color: value === l ? '#fff' : C.muted,
               border: `1.5px solid ${value === l ? LEVEL_COLOR[l] : C.border}`,
-              fontWeight: value === l ? 600 : 400, transition: 'all 0.15s' }}>
+              fontWeight: value === l ? 600 : 400 }}>
             {l}
           </button>
         ))}
@@ -124,35 +113,31 @@ function QualityToggle({ label, value, onChange }) {
 function SectionLabel({ children }) {
   return (
     <p style={{ fontSize: 10, fontWeight: 700, color: C.muted, letterSpacing: 1.2,
-      textTransform: 'uppercase', marginBottom: 8, marginTop: 14 }}>
-      {children}
-    </p>
+      textTransform: 'uppercase', marginBottom: 8, marginTop: 14 }}>{children}</p>
   )
 }
 
 function Card({ children, style }) {
   return (
-    <div style={{ background: C.card, borderRadius: 16, boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04)',
-      border: `1px solid ${C.border}`, ...style }}>
+    <div style={{ background: C.card, borderRadius: 16,
+      boxShadow: '0 1px 3px rgba(0,0,0,0.08)', border: `1px solid ${C.border}`, ...style }}>
       {children}
     </div>
   )
 }
 
 function Btn({ children, onClick, variant = 'default', disabled, style }) {
-  const variants = {
-    primary:  { background: C.accent,   color: '#fff',    border: 'none' },
-    danger:   { background: '#fee2e2',  color: '#ef4444', border: '1px solid #fca5a5' },
-    ghost:    { background: 'transparent', color: C.sub,  border: `1px solid ${C.border}` },
-    default:  { background: '#f8fafc',  color: C.text,    border: `1px solid ${C.border}` },
-    blue:     { background: '#3b82f6',  color: '#fff',    border: 'none' },
-  }
-  const v = variants[variant] || variants.default
+  const v = {
+    primary: { background: C.accent,   color: '#fff',    border: 'none' },
+    ghost:   { background: 'transparent', color: C.sub,  border: `1px solid ${C.border}` },
+    default: { background: '#f8fafc',  color: C.text,    border: `1px solid ${C.border}` },
+    blue:    { background: '#3b82f6',  color: '#fff',    border: 'none' },
+    red:     { background: '#fee2e2',  color: '#ef4444', border: '1px solid #fca5a5' },
+  }[variant] || {}
   return (
     <button onClick={onClick} disabled={disabled}
       style={{ ...v, borderRadius: 10, padding: '9px 16px', fontSize: 14, fontWeight: 500,
-        opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer',
-        transition: 'all 0.15s', ...style }}>
+        opacity: disabled ? 0.4 : 1, cursor: disabled ? 'not-allowed' : 'pointer', ...style }}>
       {children}
     </button>
   )
@@ -163,10 +148,16 @@ function Btn({ children, onClick, variant = 'default', disabled, style }) {
 function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected, onToggle }) {
   const [expanded, setExpanded] = useState(false)
   const p = player
+  const secondary = p.secondaryPositions || []
 
   const toggleRelation = (id, field) => {
     const list = p[field] || []
     onUpdate({ ...p, [field]: list.includes(id) ? list.filter(x => x !== id) : [...list, id] })
+  }
+
+  const toggleSecondary = pos => {
+    if (pos === p.position) return // can't set primary as secondary
+    onUpdate({ ...p, secondaryPositions: secondary.includes(pos) ? secondary.filter(x => x !== pos) : [...secondary, pos] })
   }
 
   if (compact) return (
@@ -174,46 +165,48 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
       background: selected ? POS_BG[p.position] : C.card,
       border: `2px solid ${selected ? POS_COLOR[p.position] : C.border}`,
       borderRadius: 12, padding: '10px 14px', display: 'flex', alignItems: 'center',
-      gap: 10, cursor: 'pointer', transition: 'all 0.15s',
-      boxShadow: selected ? `0 0 0 3px ${POS_COLOR[p.position]}22` : 'none'
+      gap: 8, cursor: 'pointer', transition: 'all 0.15s',
     }}>
       <Badge pos={p.position} />
+      {secondary.map(pos => <Badge key={pos} pos={pos} small />)}
       <span style={{ flex: 1, fontWeight: 600, fontSize: 14, color: C.text }}>{p.name || 'Unnamed'}</span>
-      {p.age && <span style={{ fontSize: 12, color: C.muted, fontWeight: 500 }}>{p.age}y</span>}
+      {p.age && <span style={{ fontSize: 12, color: C.muted }}>{p.age}y</span>}
       <Stars value={p.stars} />
     </div>
   )
 
   return (
     <Card style={{ marginBottom: 10 }}>
-      {/* Header row */}
       <div style={{ padding: '14px 16px 10px', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
         <div style={{ flex: 1 }}>
           <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
             <input value={p.name} onChange={e => onUpdate({ ...p, name: e.target.value })}
               placeholder="Player name"
               style={{ flex: 1, fontSize: 15, fontWeight: 600, padding: '8px 12px',
-                border: `1.5px solid ${C.border}`, borderRadius: 10, color: C.text,
-                background: '#fafafa' }} />
+                border: `1.5px solid ${C.border}`, borderRadius: 10, color: C.text, background: '#fafafa' }} />
             <input type="number" value={p.age} min={15} max={50}
               onChange={e => onUpdate({ ...p, age: +e.target.value })}
-              style={{ width: 62, fontSize: 14, padding: '8px 8px', textAlign: 'center',
-                border: `1.5px solid ${C.border}`, borderRadius: 10, background: '#fafafa',
-                color: C.sub, fontWeight: 500 }} />
+              style={{ width: 62, fontSize: 14, padding: '8px', textAlign: 'center',
+                border: `1.5px solid ${C.border}`, borderRadius: 10, background: '#fafafa', color: C.sub }} />
           </div>
-          {/* Position pills */}
-          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 10 }}>
-            {POSITIONS.map(pos => (
-              <button key={pos} onClick={() => onUpdate({ ...p, position: pos })}
-                style={{ padding: '4px 12px', fontSize: 12, borderRadius: 20, fontWeight: 600,
-                  background: p.position === pos ? POS_COLOR[pos] : 'transparent',
-                  color: p.position === pos ? '#fff' : C.muted,
-                  border: `1.5px solid ${p.position === pos ? POS_COLOR[pos] : C.border}`,
-                  transition: 'all 0.15s' }}>
-                {pos}
-              </button>
-            ))}
+
+          {/* Primary position */}
+          <div style={{ marginBottom: 6 }}>
+            <span style={{ fontSize: 10, color: C.muted, fontWeight: 700, letterSpacing: 1,
+              textTransform: 'uppercase', marginRight: 8 }}>Primary</span>
+            <div style={{ display: 'inline-flex', gap: 5, flexWrap: 'wrap', marginTop: 4 }}>
+              {POSITIONS.map(pos => (
+                <button key={pos} onClick={() => onUpdate({ ...p, position: pos, secondaryPositions: secondary.filter(x => x !== pos) })}
+                  style={{ padding: '4px 12px', fontSize: 12, borderRadius: 20, fontWeight: 600,
+                    background: p.position === pos ? POS_COLOR[pos] : 'transparent',
+                    color: p.position === pos ? '#fff' : C.muted,
+                    border: `1.5px solid ${p.position === pos ? POS_COLOR[pos] : C.border}` }}>
+                  {pos}
+                </button>
+              ))}
+            </div>
           </div>
+
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, color: C.muted }}>Rating</span>
             <Stars value={p.stars} onChange={v => onUpdate({ ...p, stars: v })} size={18} />
@@ -221,8 +214,7 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-end' }}>
           <button onClick={onDelete}
-            style={{ fontSize: 16, color: C.muted, background: 'none', border: 'none',
-              padding: '2px 4px', borderRadius: 6, lineHeight: 1 }}>×</button>
+            style={{ fontSize: 18, color: C.muted, background: 'none', border: 'none', lineHeight: 1 }}>×</button>
           <button onClick={() => setExpanded(!expanded)}
             style={{ fontSize: 11, color: C.sub, background: '#f8fafc', border: `1px solid ${C.border}`,
               borderRadius: 8, padding: '4px 10px', marginTop: 4, fontWeight: 500 }}>
@@ -231,24 +223,40 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
         </div>
       </div>
 
-      {/* Stat bars — always visible */}
+      {/* Stat mini-bars */}
       <div style={{ padding: '0 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 16px' }}>
         {STATS.map(s => <StatBar key={s} label={s} value={p[s.toLowerCase()] ?? 5} />)}
       </div>
 
-      {/* Expanded section */}
       {expanded && (
         <div style={{ borderTop: `1px solid ${C.border}`, padding: '12px 16px 14px' }}>
+
+          {/* Secondary positions */}
+          <SectionLabel>Can also play</SectionLabel>
+          <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap', marginBottom: 4 }}>
+            {POSITIONS.filter(pos => pos !== p.position).map(pos => (
+              <button key={pos} onClick={() => toggleSecondary(pos)}
+                style={{ padding: '4px 12px', fontSize: 12, borderRadius: 20, fontWeight: 600,
+                  background: secondary.includes(pos) ? POS_BG[pos] : 'transparent',
+                  color: secondary.includes(pos) ? POS_COLOR[pos] : C.muted,
+                  border: `1.5px solid ${secondary.includes(pos) ? POS_COLOR[pos] : C.border}` }}>
+                {pos} {secondary.includes(pos) ? '✓' : '+'}
+              </button>
+            ))}
+          </div>
+
           <SectionLabel>Stats</SectionLabel>
           {STATS.map(s => (
             <Slider key={s} label={s} value={p[s.toLowerCase()] ?? 5}
               onChange={v => onUpdate({ ...p, [s.toLowerCase()]: v })} />
           ))}
+
           <SectionLabel>Qualities</SectionLabel>
           {QUALITIES.map(q => (
             <QualityToggle key={q} label={q} value={p[qualityKey(q)] || 'Med'}
               onChange={v => onUpdate({ ...p, [qualityKey(q)]: v })} />
           ))}
+
           <SectionLabel>Keep apart from</SectionLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 4 }}>
             {allPlayers.filter(q => q.id !== p.id && q.name).map(q => {
@@ -256,15 +264,14 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
               return (
                 <button key={q.id} onClick={() => toggleRelation(q.id, 'keepApart')}
                   style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20,
-                    background: on ? '#fee2e2' : 'transparent',
-                    color: on ? '#ef4444' : C.muted,
-                    border: `1.5px solid ${on ? '#fca5a5' : C.border}`,
-                    fontWeight: on ? 600 : 400 }}>
+                    background: on ? '#fee2e2' : 'transparent', color: on ? '#ef4444' : C.muted,
+                    border: `1.5px solid ${on ? '#fca5a5' : C.border}`, fontWeight: on ? 600 : 400 }}>
                   {q.name}
                 </button>
               )
             })}
           </div>
+
           <SectionLabel>Gets along well with</SectionLabel>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
             {allPlayers.filter(q => q.id !== p.id && q.name).map(q => {
@@ -272,10 +279,8 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
               return (
                 <button key={q.id} onClick={() => toggleRelation(q.id, 'keepTogether')}
                   style={{ fontSize: 12, padding: '4px 10px', borderRadius: 20,
-                    background: on ? '#dcfce7' : 'transparent',
-                    color: on ? '#16a34a' : C.muted,
-                    border: `1.5px solid ${on ? '#86efac' : C.border}`,
-                    fontWeight: on ? 600 : 400 }}>
+                    background: on ? '#dcfce7' : 'transparent', color: on ? '#16a34a' : C.muted,
+                    border: `1.5px solid ${on ? '#86efac' : C.border}`, fontWeight: on ? 600 : 400 }}>
                   {q.name}
                 </button>
               )
@@ -307,7 +312,6 @@ function RulesTab({ rules, players, saveRules }) {
       <p style={{ fontSize: 13, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
         Named constraints applied during team generation. Toggle on/off each session.
       </p>
-
       {rules.length === 0 && !draft && (
         <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
           <div style={{ fontSize: 32, marginBottom: 8 }}>⚡</div>
@@ -315,7 +319,6 @@ function RulesTab({ rules, players, saveRules }) {
           <div style={{ fontSize: 13, color: C.muted }}>Add rules to control team pairings</div>
         </Card>
       )}
-
       {rules.map(r => {
         const pA = players.find(p => p.id === r.playerA)
         const pB = players.find(p => p.id === r.playerB)
@@ -335,18 +338,15 @@ function RulesTab({ rules, players, saveRules }) {
             </div>
             <button onClick={() => saveRules(rules.map(x => x.id === r.id ? { ...x, active: !x.active } : x))}
               style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
-                background: r.active ? '#dcfce7' : '#f1f5f9',
-                color: r.active ? '#16a34a' : C.muted,
+                background: r.active ? '#dcfce7' : '#f1f5f9', color: r.active ? '#16a34a' : C.muted,
                 border: `1.5px solid ${r.active ? '#86efac' : C.border}` }}>
               {r.active ? 'On' : 'Off'}
             </button>
             <button onClick={() => saveRules(rules.filter(x => x.id !== r.id))}
-              style={{ fontSize: 18, color: '#d1d5db', background: 'none', border: 'none',
-                padding: '0 4px', lineHeight: 1, flexShrink: 0 }}>×</button>
+              style={{ fontSize: 18, color: '#d1d5db', background: 'none', border: 'none', padding: '0 4px', lineHeight: 1 }}>×</button>
           </Card>
         )
       })}
-
       {draft && (
         <Card style={{ padding: '16px', marginBottom: 8 }}>
           <SectionLabel>New rule</SectionLabel>
@@ -358,8 +358,7 @@ function RulesTab({ rules, players, saveRules }) {
               {named.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
             <select value={draft.type} onChange={e => setDraft({ ...draft, type: e.target.value })}
-              style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`,
-                fontSize: 13, background: '#fafafa', color: C.text }}>
+              style={{ padding: '9px 12px', borderRadius: 10, border: `1.5px solid ${C.border}`, fontSize: 13, background: '#fafafa', color: C.text }}>
               <option value='together'>Same team</option>
               <option value='apart'>Different teams</option>
             </select>
@@ -371,25 +370,242 @@ function RulesTab({ rules, players, saveRules }) {
             </select>
           </div>
           <input value={draft.label} onChange={e => setDraft({ ...draft, label: e.target.value })}
-            placeholder="Label (optional — auto-generated if blank)"
+            placeholder="Label (optional)"
             style={{ width: '100%', padding: '9px 12px', borderRadius: 10,
-              border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 10,
-              background: '#fafafa', color: C.text }} />
+              border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 10, background: '#fafafa', color: C.text }} />
           <div style={{ display: 'flex', gap: 8 }}>
             <Btn variant="primary" onClick={saveDraft} style={{ flex: 1 }}>Save rule</Btn>
             <Btn variant="ghost" onClick={() => setDraft(null)}>Cancel</Btn>
           </div>
         </Card>
       )}
-
       {!draft && (
-        <button onClick={() => setDraft(defaultRule())}
+        <button onClick={() => setDraft({ id: Date.now(), label: '', playerA: null, playerB: null, type: 'together', active: true })}
           style={{ width: '100%', padding: 12, fontSize: 14, borderRadius: 12, marginTop: 4,
-            border: `2px dashed ${C.border}`, background: 'transparent', color: C.muted,
-            fontWeight: 500 }}>
+            border: `2px dashed ${C.border}`, background: 'transparent', color: C.muted, fontWeight: 500 }}>
           + Add rule
         </button>
       )}
+    </div>
+  )
+}
+
+// ─── History Tab ─────────────────────────────────────────────────────────────
+
+function HistoryTab({ history, players, teams, saveHistory }) {
+  const [filter, setFilter] = useState('all')
+  const [showGameForm, setShowGameForm] = useState(false)
+  const [showNoteForm, setShowNoteForm] = useState(false)
+  const [gameForm, setGameForm] = useState({ scoreA: '', scoreB: '', note: '' })
+  const [noteText, setNoteText] = useState('')
+
+  const logGame = () => {
+    if (gameForm.scoreA === '' || gameForm.scoreB === '') return
+    const entry = {
+      id: Date.now() + Math.random(),
+      type: 'game',
+      timestamp: Date.now(),
+      scoreA: +gameForm.scoreA,
+      scoreB: +gameForm.scoreB,
+      teamA: teams?.t1?.map(p => p.id) || [],
+      teamB: teams?.t2?.map(p => p.id) || [],
+      teamANames: teams?.t1?.map(p => p.name) || [],
+      teamBNames: teams?.t2?.map(p => p.name) || [],
+      note: gameForm.note,
+    }
+    saveHistory([entry, ...history])
+    setGameForm({ scoreA: '', scoreB: '', note: '' })
+    setShowGameForm(false)
+  }
+
+  const logNote = () => {
+    if (!noteText.trim()) return
+    const entry = { id: Date.now() + Math.random(), type: 'note', timestamp: Date.now(), text: noteText.trim() }
+    saveHistory([entry, ...history])
+    setNoteText('')
+    setShowNoteForm(false)
+  }
+
+  const filtered = filter === 'all' ? history : history.filter(e => e.type === filter)
+
+  const typeIcon  = { game: '⚽', playerUpdate: '📊', note: '💬' }
+  const typeLabel = { game: 'Game', playerUpdate: 'Update', note: 'Note' }
+  const typeColor = { game: '#3b82f6', playerUpdate: '#22c55e', note: '#f59e0b' }
+  const typeBg    = { game: '#dbeafe', playerUpdate: '#dcfce7', note: '#fef3c7' }
+
+  return (
+    <div>
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <button onClick={() => { setShowGameForm(!showGameForm); setShowNoteForm(false) }}
+          style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+            background: showGameForm ? C.accent : C.card, color: showGameForm ? '#fff' : C.sub,
+            border: `1.5px solid ${showGameForm ? C.accent : C.border}` }}>
+          ⚽ Log game
+        </button>
+        <button onClick={() => { setShowNoteForm(!showNoteForm); setShowGameForm(false) }}
+          style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 600,
+            background: showNoteForm ? '#f59e0b' : C.card, color: showNoteForm ? '#fff' : C.sub,
+            border: `1.5px solid ${showNoteForm ? '#f59e0b' : C.border}` }}>
+          💬 Add note
+        </button>
+      </div>
+
+      {/* Game form */}
+      {showGameForm && (
+        <Card style={{ padding: 16, marginBottom: 16 }}>
+          <SectionLabel>Log game result</SectionLabel>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 10 }}>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>TEAM A</div>
+              <input type="number" min={0} max={99} value={gameForm.scoreA}
+                onChange={e => setGameForm({ ...gameForm, scoreA: e.target.value })}
+                style={{ width: '100%', fontSize: 28, fontWeight: 800, textAlign: 'center',
+                  padding: '8px', border: `2px solid ${C.border}`, borderRadius: 12,
+                  color: '#3b82f6', background: '#dbeafe' }} />
+            </div>
+            <span style={{ fontSize: 20, color: C.muted, fontWeight: 700 }}>–</span>
+            <div style={{ flex: 1, textAlign: 'center' }}>
+              <div style={{ fontSize: 11, color: C.muted, marginBottom: 4, fontWeight: 600 }}>TEAM B</div>
+              <input type="number" min={0} max={99} value={gameForm.scoreB}
+                onChange={e => setGameForm({ ...gameForm, scoreB: e.target.value })}
+                style={{ width: '100%', fontSize: 28, fontWeight: 800, textAlign: 'center',
+                  padding: '8px', border: `2px solid ${C.border}`, borderRadius: 12,
+                  color: '#22c55e', background: '#dcfce7' }} />
+            </div>
+          </div>
+          <input value={gameForm.note} onChange={e => setGameForm({ ...gameForm, note: e.target.value })}
+            placeholder="Notes (optional — standout players, incidents...)"
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 10,
+              border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 10,
+              background: '#fafafa', color: C.text }} />
+          {!teams && <p style={{ fontSize: 12, color: '#f59e0b', marginBottom: 8 }}>⚠ No teams generated yet — score will be logged without team details.</p>}
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="primary" onClick={logGame} style={{ flex: 1 }}>Save result</Btn>
+            <Btn variant="ghost" onClick={() => setShowGameForm(false)}>Cancel</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* Note form */}
+      {showNoteForm && (
+        <Card style={{ padding: 16, marginBottom: 16 }}>
+          <SectionLabel>Add note</SectionLabel>
+          <textarea value={noteText} onChange={e => setNoteText(e.target.value)}
+            placeholder="Tactical notes, observations, anything worth remembering..."
+            rows={3}
+            style={{ width: '100%', padding: '9px 12px', borderRadius: 10,
+              border: `1.5px solid ${C.border}`, fontSize: 13, marginBottom: 10,
+              background: '#fafafa', color: C.text, resize: 'vertical' }} />
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Btn variant="primary" onClick={logNote} style={{ flex: 1 }}>Save note</Btn>
+            <Btn variant="ghost" onClick={() => setShowNoteForm(false)}>Cancel</Btn>
+          </div>
+        </Card>
+      )}
+
+      {/* Filter pills */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+        {['all', 'game', 'playerUpdate', 'note'].map(f => (
+          <button key={f} onClick={() => setFilter(f)}
+            style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
+              background: filter === f ? C.text : C.card,
+              color: filter === f ? '#fff' : C.muted,
+              border: `1.5px solid ${filter === f ? C.text : C.border}` }}>
+            {f === 'all' ? 'All' : typeLabel[f]}
+          </button>
+        ))}
+      </div>
+
+      {/* Timeline */}
+      {filtered.length === 0 && (
+        <Card style={{ padding: '40px 20px', textAlign: 'center' }}>
+          <div style={{ fontSize: 32, marginBottom: 8 }}>📋</div>
+          <div style={{ fontSize: 15, fontWeight: 600, color: C.text, marginBottom: 4 }}>No history yet</div>
+          <div style={{ fontSize: 13, color: C.muted }}>Log a game or let the AI Coach make updates</div>
+        </Card>
+      )}
+
+      <div style={{ position: 'relative' }}>
+        {filtered.length > 0 && (
+          <div style={{ position: 'absolute', left: 18, top: 0, bottom: 0, width: 2,
+            background: C.border, borderRadius: 2 }} />
+        )}
+        {filtered.map((e, i) => (
+          <div key={e.id} style={{ display: 'flex', gap: 12, marginBottom: 12, position: 'relative' }}>
+            {/* Icon bubble */}
+            <div style={{ width: 36, height: 36, borderRadius: '50%', flexShrink: 0, zIndex: 1,
+              background: typeBg[e.type], border: `2px solid ${C.card}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16,
+              boxShadow: `0 0 0 2px ${typeColor[e.type]}33` }}>
+              {typeIcon[e.type]}
+            </div>
+
+            {/* Content */}
+            <Card style={{ flex: 1, padding: '12px 14px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: typeColor[e.type],
+                  textTransform: 'uppercase', letterSpacing: 0.8 }}>{typeLabel[e.type]}</span>
+                <span style={{ fontSize: 11, color: C.muted }}>{formatDate(e.timestamp)}</span>
+              </div>
+
+              {e.type === 'game' && (
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#3b82f6', fontWeight: 700, marginBottom: 2 }}>TEAM A</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#3b82f6', lineHeight: 1 }}>{e.scoreA}</div>
+                    </div>
+                    <div style={{ fontSize: 16, color: C.muted, fontWeight: 700, flex: 1, textAlign: 'center' }}>–</div>
+                    <div style={{ textAlign: 'center' }}>
+                      <div style={{ fontSize: 11, color: '#22c55e', fontWeight: 700, marginBottom: 2 }}>TEAM B</div>
+                      <div style={{ fontSize: 28, fontWeight: 800, color: '#22c55e', lineHeight: 1 }}>{e.scoreB}</div>
+                    </div>
+                    <div style={{ flex: 2, fontSize: 12, color: C.sub }}>
+                      {e.scoreA > e.scoreB ? '🏆 Team A won' : e.scoreB > e.scoreA ? '🏆 Team B won' : '🤝 Draw'}
+                    </div>
+                  </div>
+                  {e.teamANames?.length > 0 && (
+                    <div style={{ fontSize: 11, color: C.muted, lineHeight: 1.6 }}>
+                      <span style={{ color: '#3b82f6', fontWeight: 600 }}>A: </span>{e.teamANames.join(', ')}
+                      <br />
+                      <span style={{ color: '#22c55e', fontWeight: 600 }}>B: </span>{e.teamBNames?.join(', ')}
+                    </div>
+                  )}
+                  {e.note && <p style={{ fontSize: 12, color: C.sub, marginTop: 6, fontStyle: 'italic' }}>"{e.note}"</p>}
+                </div>
+              )}
+
+              {e.type === 'playerUpdate' && (
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600, color: C.text, marginBottom: 4 }}>
+                    {e.playerName}
+                  </div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: e.reason ? 6 : 0 }}>
+                    {(e.changes || []).map((ch, ci) => (
+                      <span key={ci} style={{ fontSize: 12, padding: '2px 8px', borderRadius: 20,
+                        background: '#f1f5f9', color: C.sub }}>
+                        {ch.field}: <strong style={{ color: '#ef4444' }}>{ch.from}</strong>
+                        {' → '}
+                        <strong style={{ color: C.accent }}>{ch.to}</strong>
+                      </span>
+                    ))}
+                  </div>
+                  {e.reason && <p style={{ fontSize: 12, color: C.sub, fontStyle: 'italic' }}>"{e.reason}"</p>}
+                </div>
+              )}
+
+              {e.type === 'note' && (
+                <p style={{ fontSize: 13, color: C.sub, lineHeight: 1.6 }}>{e.text}</p>
+              )}
+
+              <button onClick={() => saveHistory(history.filter(x => x.id !== e.id))}
+                style={{ position: 'absolute', top: 8, right: 8, fontSize: 14, color: '#e2e8f0',
+                  background: 'none', border: 'none', cursor: 'pointer', lineHeight: 1 }}>×</button>
+            </Card>
+          </div>
+        ))}
+      </div>
     </div>
   )
 }
@@ -420,9 +636,7 @@ function generateTeams(selected, players, rules) {
       return active.some(r => {
         const aT1 = ta.find(p => p.id == r.playerA), bT1 = ta.find(p => p.id == r.playerB)
         const aT2 = tb.find(p => p.id == r.playerA), bT2 = tb.find(p => p.id == r.playerB)
-        return r.type === 'together'
-          ? (aT1 && bT2) || (aT2 && bT1)
-          : (aT1 && bT1) || (aT2 && bT2)
+        return r.type === 'together' ? (aT1 && bT2) || (aT2 && bT1) : (aT1 && bT1) || (aT2 && bT2)
       })
     }
 
@@ -437,20 +651,14 @@ function generateTeams(selected, players, rules) {
 
 // ─── Team Display ─────────────────────────────────────────────────────────────
 
-function TeamDisplay({ team, label, score, color, accent }) {
-  const byPos = POSITIONS.reduce((acc, pos) => {
-    acc[pos] = team.filter(p => p.position === pos); return acc
-  }, {})
+function TeamDisplay({ team, label, score, color }) {
+  const byPos = POSITIONS.reduce((acc, pos) => { acc[pos] = team.filter(p => p.position === pos); return acc }, {})
   return (
     <div style={{ flex: 1, minWidth: 260, background: C.card, borderRadius: 16,
-      border: `1px solid ${C.border}`, overflow: 'hidden',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
-      <div style={{ background: color, padding: '12px 16px', display: 'flex',
-        justifyContent: 'space-between', alignItems: 'center' }}>
+      border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
+      <div style={{ background: color, padding: '12px 16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <span style={{ fontWeight: 700, fontSize: 16, color: '#fff' }}>{label}</span>
-        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>
-          Score {score.toFixed(1)}
-        </span>
+        <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.8)', fontWeight: 500 }}>Score {score.toFixed(1)}</span>
       </div>
       <div style={{ padding: '12px 16px' }}>
         {POSITIONS.map(pos => byPos[pos].length > 0 && (
@@ -460,7 +668,12 @@ function TeamDisplay({ team, label, score, color, accent }) {
             {byPos[pos].map(p => (
               <div key={p.id} style={{ display: 'flex', alignItems: 'center', gap: 8,
                 padding: '5px 0', borderBottom: `1px solid ${C.border}` }}>
-                <span style={{ flex: 1, fontSize: 14, fontWeight: 500, color: C.text }}>{p.name}</span>
+                <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{p.name}</span>
+                {(p.secondaryPositions||[]).length > 0 && (
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {p.secondaryPositions.map(sp => <Badge key={sp} pos={sp} small />)}
+                  </div>
+                )}
                 {p.age && <span style={{ fontSize: 11, color: C.muted }}>{p.age}y</span>}
                 <Stars value={p.stars} size={13} />
               </div>
@@ -474,7 +687,7 @@ function TeamDisplay({ team, label, score, color, accent }) {
 
 // ─── AI Coach ─────────────────────────────────────────────────────────────────
 
-function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
+function AICoach({ players, rules, history, onPlayersUpdate, onRulesUpdate, onHistoryUpdate }) {
   const [messages, setMessages] = useState([{
     role: 'assistant',
     content: "Hey coach! 👋 Tell me what happened in today's game, ask me to update player stats, create team rules, or anything about the squad."
@@ -485,18 +698,40 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
 
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }) }, [messages])
 
-  const applyActions = (actions, curPlayers, curRules) => {
-    let p = [...curPlayers], r = [...curRules], log = []
+  const applyActions = (actions, curPlayers, curRules, curHistory, aiMessage) => {
+    let p = [...curPlayers], r = [...curRules], h = [...curHistory]
+    const log = []
+
     for (const a of actions || []) {
       if (a.type === 'updatePlayer') {
-        p = p.map(x => x.id == a.playerId ? (log.push(`Updated ${x.name}`), { ...x, ...a.changes }) : x)
+        const old = p.find(x => x.id == a.playerId)
+        if (old) {
+          const changes = Object.entries(a.changes).map(([field, to]) => ({
+            field, from: old[field], to
+          })).filter(ch => ch.from !== ch.to)
+
+          p = p.map(x => x.id == a.playerId ? { ...x, ...a.changes } : x)
+          log.push(`Updated ${old.name}`)
+
+          if (changes.length > 0) {
+            h = [{
+              id: Date.now() + Math.random(),
+              type: 'playerUpdate',
+              timestamp: Date.now(),
+              playerId: a.playerId,
+              playerName: old.name,
+              changes,
+              reason: aiMessage,
+            }, ...h]
+          }
+        }
       } else if (a.type === 'addRule') {
         const pA = p.find(x => x.id == a.playerAId), pB = p.find(x => x.id == a.playerBId)
         if (pA && pB) {
           r = [...r, { id: Date.now() + Math.random(), active: true, type: a.ruleType,
             playerA: a.playerAId, playerB: a.playerBId,
             label: a.label || `${pA.name} ${a.ruleType === 'together' ? '+' : '≠'} ${pB.name}` }]
-          log.push(`Added rule`)
+          log.push('Added rule')
         }
       } else if (a.type === 'toggleRule') {
         r = r.map(x => x.id == a.ruleId ? { ...x, active: !x.active } : x)
@@ -506,8 +741,10 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
         log.push('Deleted rule')
       }
     }
-    if (p !== curPlayers) onPlayersUpdate(p)
-    if (r !== curRules) onRulesUpdate(r)
+
+    if (JSON.stringify(p) !== JSON.stringify(curPlayers)) onPlayersUpdate(p)
+    if (JSON.stringify(r) !== JSON.stringify(curRules)) onRulesUpdate(r)
+    if (JSON.stringify(h) !== JSON.stringify(curHistory)) onHistoryUpdate(h)
     return log
   }
 
@@ -518,15 +755,15 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
     const next = [...messages, { role: 'user', content: userMsg }]
     setMessages(next)
     setLoading(true)
-    const history = next.slice(1, -1).map(m => ({ role: m.role, content: m.content }))
+    const hist = next.slice(1, -1).map(m => ({ role: m.role, content: m.content }))
     try {
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg, players, rules, history })
+        body: JSON.stringify({ message: userMsg, players, rules, history: hist })
       })
       const data = await res.json()
-      const log = applyActions(data.actions, players, rules)
+      const log = applyActions(data.actions, players, rules, history, data.message)
       const suffix = log.length ? `\n\n✓ ${log.join(', ')}` : ''
       setMessages(prev => [...prev, { role: 'assistant', content: data.message + suffix }])
     } catch {
@@ -539,7 +776,7 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
     "Team A won 3-1, Musa scored twice",
     "Put Eren and Kurt on the same team",
     "Who are our weakest defenders?",
-    "Suggest how to improve squad balance",
+    "Suggest improvements for next week",
   ]
 
   return (
@@ -560,8 +797,7 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
               border: m.role === 'assistant' ? `1px solid ${C.border}` : 'none',
               borderBottomRightRadius: m.role === 'user' ? 4 : 16,
               borderBottomLeftRadius: m.role === 'assistant' ? 4 : 16,
-              boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-              whiteSpace: 'pre-wrap'
+              boxShadow: '0 1px 2px rgba(0,0,0,0.06)', whiteSpace: 'pre-wrap'
             }}>
               {m.content}
             </div>
@@ -570,11 +806,10 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
         {loading && (
           <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 10 }}>
             <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.accent,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 14, marginRight: 8 }}>⚽</div>
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, marginRight: 8 }}>⚽</div>
             <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 16,
               borderBottomLeftRadius: 4, padding: '10px 16px', fontSize: 14, color: C.muted }}>
-              Thinking<span style={{ animation: 'none' }}>...</span>
+              Thinking...
             </div>
           </div>
         )}
@@ -586,8 +821,7 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
           {suggestions.map(s => (
             <button key={s} onClick={() => setInput(s)}
               style={{ fontSize: 12, padding: '6px 12px', borderRadius: 20,
-                background: C.card, color: C.sub, border: `1px solid ${C.border}`,
-                fontWeight: 500 }}>
+                background: C.card, color: C.sub, border: `1px solid ${C.border}`, fontWeight: 500 }}>
               {s}
             </button>
           ))}
@@ -601,10 +835,9 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
           style={{ flex: 1, padding: '11px 14px', borderRadius: 12, border: `1.5px solid ${C.border}`,
             fontSize: 14, background: '#fafafa', color: C.text }} />
         <button onClick={send} disabled={loading || !input.trim()}
-          style={{ padding: '11px 20px', borderRadius: 12, fontSize: 14, fontWeight: 600,
+          style={{ padding: '11px 20px', borderRadius: 12, fontSize: 16, fontWeight: 700,
             background: input.trim() && !loading ? C.accent : C.border,
-            color: input.trim() && !loading ? '#fff' : C.muted,
-            border: 'none', transition: 'all 0.15s' }}>
+            color: input.trim() && !loading ? '#fff' : C.muted, border: 'none' }}>
           ↑
         </button>
       </div>
@@ -615,9 +848,10 @@ function AICoach({ players, rules, onPlayersUpdate, onRulesUpdate }) {
 // ─── App ──────────────────────────────────────────────────────────────────────
 
 export default function App() {
-  const [tab, setTab] = useState('pool')
+  const [tab, setTab]           = useState('pool')
   const [players, setPlayers]   = useState([])
   const [rules, setRules]       = useState([])
+  const [history, setHistory]   = useState([])
   const [selected, setSelected] = useState([])
   const [teams, setTeams]       = useState(null)
   const [error, setError]       = useState('')
@@ -627,12 +861,14 @@ export default function App() {
   useEffect(() => {
     (async () => {
       try {
-        const [ps, rs] = await Promise.all([
+        const [ps, rs, hs] = await Promise.all([
           getDoc(doc(db, 'shared', 'players')),
-          getDoc(doc(db, 'shared', 'rules'))
+          getDoc(doc(db, 'shared', 'rules')),
+          getDoc(doc(db, 'shared', 'history')),
         ])
         if (ps.exists()) setPlayers(ps.data().list || [])
         if (rs.exists()) setRules(rs.data().list || [])
+        if (hs.exists()) setHistory(hs.data().entries || [])
       } catch (e) { console.error(e) }
       setLoaded(true)
     })()
@@ -648,6 +884,11 @@ export default function App() {
     try { await setDoc(doc(db, 'shared', 'rules'), { list: updated }) } catch {}
     setSaving(false)
   }
+  const saveHistory = async updated => {
+    setHistory(updated); setSaving(true)
+    try { await setDoc(doc(db, 'shared', 'history'), { entries: updated }) } catch {}
+    setSaving(false)
+  }
 
   const addPlayer    = () => savePlayers([...players, defaultPlayer()])
   const updatePlayer = p  => savePlayers(players.map(x => x.id === p.id ? p : x))
@@ -656,7 +897,7 @@ export default function App() {
     savePlayers(players.filter(x => x.id !== id).map(x => ({
       ...x,
       keepApart:    (x.keepApart||[]).filter(k => k !== id),
-      keepTogether: (x.keepTogether||[]).filter(k => k !== id)
+      keepTogether: (x.keepTogether||[]).filter(k => k !== id),
     })))
   }
 
@@ -689,12 +930,12 @@ export default function App() {
     { id: 'rules',   label: `Rules${activeRules.length ? ` · ${activeRules.length}` : ''}` },
     { id: 'session', label: 'Session' },
     { id: 'teams',   label: 'Teams' },
+    { id: 'history', label: `History${history.length ? ` · ${history.length}` : ''}` },
     { id: 'ai',      label: '✦ AI' },
   ]
 
   if (!loaded) return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center',
-      background: C.header }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: C.header }}>
       <div style={{ textAlign: 'center', color: '#fff' }}>
         <div style={{ fontSize: 40, marginBottom: 12 }}>⚽</div>
         <div style={{ fontSize: 16, opacity: 0.7 }}>Loading squad...</div>
@@ -707,14 +948,11 @@ export default function App() {
       {/* Header */}
       <div style={{ background: C.header, padding: '16px 20px', display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
-        position: 'sticky', top: 0, zIndex: 100,
-        boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
+        position: 'sticky', top: 0, zIndex: 100, boxShadow: '0 2px 8px rgba(0,0,0,0.3)' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <span style={{ fontSize: 22 }}>⚽</span>
           <div>
-            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: -0.3 }}>
-              Pape Spor Squad
-            </div>
+            <div style={{ fontSize: 17, fontWeight: 700, color: '#fff', letterSpacing: -0.3 }}>Pape Spor Squad</div>
             <div style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
               {players.length} players{saving ? ' · saving...' : ''}
             </div>
@@ -731,7 +969,7 @@ export default function App() {
         scrollbarWidth: 'none', WebkitOverflowScrolling: 'touch' }}>
         {TABS.map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
-            style={{ padding: '14px 16px', fontSize: 13, fontWeight: tab === t.id ? 700 : 500,
+            style={{ padding: '14px 14px', fontSize: 13, fontWeight: tab === t.id ? 700 : 500,
               color: tab === t.id ? C.accent : C.muted, background: 'none', border: 'none',
               borderBottom: `2.5px solid ${tab === t.id ? C.accent : 'transparent'}`,
               whiteSpace: 'nowrap', transition: 'all 0.15s' }}>
@@ -741,18 +979,17 @@ export default function App() {
       </div>
 
       {/* Content */}
-      <div style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 40px' }}>
+      <div style={{ maxWidth: 720, margin: '0 auto', padding: '20px 16px 60px' }}>
 
-        {/* ── Squad ── */}
         {tab === 'pool' && (
           <div>
             <p style={{ fontSize: 13, color: C.sub, marginBottom: 16, lineHeight: 1.6 }}>
-              Shared roster — edits save instantly for everyone in the group.
+              Shared roster — edits save instantly for everyone.
             </p>
             {players.length === 0 && (
               <Card style={{ padding: '48px 20px', textAlign: 'center', marginBottom: 12 }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>👥</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 4 }}>No players yet</div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>No players yet</div>
                 <div style={{ fontSize: 13, color: C.muted }}>Add your first player below</div>
               </Card>
             )}
@@ -769,45 +1006,34 @@ export default function App() {
           </div>
         )}
 
-        {/* ── Rules ── */}
-        {tab === 'rules' && (
-          <RulesTab rules={rules} players={players} saveRules={saveRules} />
-        )}
+        {tab === 'rules' && <RulesTab rules={rules} players={players} saveRules={saveRules} />}
 
-        {/* ── Session ── */}
         {tab === 'session' && (
           <div>
             <p style={{ fontSize: 13, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
               Pick 2 GK · 6 DEF · 4 MID · 2 FWD for today's game.
             </p>
-
-            {/* Formation tracker */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
               {POSITIONS.map(pos => {
                 const done = selCounts[pos] === FORMATION[pos]
                 return (
                   <Card key={pos} style={{ padding: '10px 8px', textAlign: 'center',
-                    borderColor: done ? POS_COLOR[pos] : C.border,
-                    background: done ? POS_BG[pos] : C.card }}>
-                    <div style={{ fontSize: 10, fontWeight: 700, color: POS_COLOR[pos],
-                      letterSpacing: 1, marginBottom: 4 }}>{pos}</div>
+                    borderColor: done ? POS_COLOR[pos] : C.border, background: done ? POS_BG[pos] : C.card }}>
+                    <div style={{ fontSize: 10, fontWeight: 700, color: POS_COLOR[pos], letterSpacing: 1, marginBottom: 4 }}>{pos}</div>
                     <div style={{ fontSize: 22, fontWeight: 800, color: done ? POS_COLOR[pos] : C.text, lineHeight: 1 }}>
-                      {selCounts[pos]}
-                      <span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>/{FORMATION[pos]}</span>
+                      {selCounts[pos]}<span style={{ fontSize: 13, color: C.muted, fontWeight: 500 }}>/{FORMATION[pos]}</span>
                     </div>
                   </Card>
                 )
               })}
             </div>
-
             {activeRules.length > 0 && (
               <div style={{ background: '#fef3c7', border: '1px solid #fde68a', borderRadius: 10,
-                padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#92400e', display: 'flex', gap: 8, alignItems: 'center' }}>
+                padding: '8px 12px', marginBottom: 14, fontSize: 12, color: '#92400e', display: 'flex', gap: 8 }}>
                 <span>⚡</span>
                 <span>{activeRules.length} rule{activeRules.length > 1 ? 's' : ''} active: {activeRules.map(r => r.label).join(', ')}</span>
               </div>
             )}
-
             {POSITIONS.map(pos => {
               const group = players.filter(p => p.position === pos)
               if (!group.length) return null
@@ -815,7 +1041,7 @@ export default function App() {
                 <div key={pos} style={{ marginBottom: 16 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                     <div style={{ width: 3, height: 16, borderRadius: 2, background: POS_COLOR[pos] }} />
-                    <span style={{ fontSize: 12, fontWeight: 700, color: POS_COLOR[pos], letterSpacing: 0.5 }}>{pos}</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: POS_COLOR[pos] }}>{pos}</span>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                     {group.map(p => (
@@ -827,33 +1053,26 @@ export default function App() {
                 </div>
               )
             })}
-
             {error && (
               <div style={{ background: '#fee2e2', border: '1px solid #fca5a5', borderRadius: 10,
-                padding: '10px 14px', fontSize: 13, color: '#dc2626', marginTop: 8 }}>
-                {error}
-              </div>
+                padding: '10px 14px', fontSize: 13, color: '#dc2626', marginTop: 8 }}>{error}</div>
             )}
-
             <button onClick={generate} disabled={!readyToGenerate}
               style={{ width: '100%', marginTop: 16, padding: 14, fontSize: 16, fontWeight: 700,
-                borderRadius: 14, border: 'none', transition: 'all 0.2s',
-                background: readyToGenerate ? C.accent : C.border,
-                color: readyToGenerate ? '#fff' : C.muted,
-                cursor: readyToGenerate ? 'pointer' : 'not-allowed',
+                borderRadius: 14, border: 'none', background: readyToGenerate ? C.accent : C.border,
+                color: readyToGenerate ? '#fff' : C.muted, cursor: readyToGenerate ? 'pointer' : 'not-allowed',
                 boxShadow: readyToGenerate ? '0 4px 14px rgba(34,197,94,0.35)' : 'none' }}>
               Generate Teams
             </button>
           </div>
         )}
 
-        {/* ── Teams ── */}
         {tab === 'teams' && (
           <div>
             {!teams ? (
               <Card style={{ padding: '48px 20px', textAlign: 'center' }}>
                 <div style={{ fontSize: 40, marginBottom: 12 }}>🎯</div>
-                <div style={{ fontSize: 16, fontWeight: 600, color: C.text, marginBottom: 4 }}>No teams yet</div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>No teams yet</div>
                 <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Go to Session to select players</div>
                 <Btn variant="primary" onClick={() => setTab('session')}>Go to Session</Btn>
               </Card>
@@ -863,29 +1082,28 @@ export default function App() {
                   <TeamDisplay team={teams.t1} label="Team A" score={teams.s1} color="#3b82f6" />
                   <TeamDisplay team={teams.t2} label="Team B" score={teams.s2} color="#22c55e" />
                 </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <Btn variant="default" style={{ flex: 1 }}
-                    onClick={() => setTeams(generateTeams(selected, players, rules))}>
-                    Regenerate
-                  </Btn>
-                  <Btn variant="default" style={{ flex: 1 }} onClick={() => setTab('session')}>
-                    Change players
-                  </Btn>
+                <div style={{ display: 'flex', gap: 10, marginBottom: 12 }}>
+                  <Btn style={{ flex: 1 }} onClick={() => setTeams(generateTeams(selected, players, rules))}>Regenerate</Btn>
+                  <Btn style={{ flex: 1 }} onClick={() => setTab('session')}>Change players</Btn>
                 </div>
-                <div style={{ marginTop: 12, padding: '10px 14px', background: '#fef3c7',
-                  border: '1px solid #fde68a', borderRadius: 10, fontSize: 12, color: '#92400e',
-                  textAlign: 'center' }}>
-                  After the game, go to <strong>✦ AI</strong> to report the score and update ratings
-                </div>
+                <button onClick={() => setTab('history')}
+                  style={{ width: '100%', padding: '10px 14px', background: '#fef3c7',
+                    border: '1px solid #fde68a', borderRadius: 10, fontSize: 12, color: '#92400e',
+                    fontWeight: 600, cursor: 'pointer' }}>
+                  ⚽ After the game → log the score in History
+                </button>
               </>
             )}
           </div>
         )}
 
-        {/* ── AI Coach ── */}
+        {tab === 'history' && (
+          <HistoryTab history={history} players={players} teams={teams} saveHistory={saveHistory} />
+        )}
+
         {tab === 'ai' && (
-          <AICoach players={players} rules={rules}
-            onPlayersUpdate={savePlayers} onRulesUpdate={saveRules} />
+          <AICoach players={players} rules={rules} history={history}
+            onPlayersUpdate={savePlayers} onRulesUpdate={saveRules} onHistoryUpdate={saveHistory} />
         )}
       </div>
     </div>
