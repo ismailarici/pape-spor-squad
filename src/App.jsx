@@ -675,10 +675,13 @@ function generateTeams(selected, players, rules) {
     if (best) return best
   }
 
-  // Tier 3: deterministic snake-draft by score — always succeeds (wrong position mix)
-  const sorted = [...pool].sort((a, b) => playerScore(b) - playerScore(a))
-  const t1 = [], t2 = []
-  sorted.forEach((p, i) => (i % 2 === 0 ? t1 : t2).push(p))
+  // Tier 3: GK-aware snake-draft — always puts 1 GK per team, balances rest by score
+  const sg = shuffle(gks)
+  const outfield = [...pool.filter(p => p.position !== 'GK'), ...sg.slice(2)]
+    .sort((a, b) => playerScore(b) - playerScore(a))
+  const t1 = sg.length >= 1 ? [sg[0]] : []
+  const t2 = sg.length >= 2 ? [sg[1]] : []
+  outfield.forEach((p, i) => (i % 2 === 0 ? t1 : t2).push(p))
   const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
   const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
   return { t1, t2, s1, s2, fallback: true, rulesIgnored: true }
