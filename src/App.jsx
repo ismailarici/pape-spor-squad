@@ -35,7 +35,14 @@ function playerScore(p) {
   return p.stars * 0.6 + (avg / 10) * 5 * 0.4
 }
 
-function shuffle(arr) { return [...arr].sort(() => Math.random() - 0.5) }
+function shuffle(arr) {
+  const a = [...arr]
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]]
+  }
+  return a
+}
 
 function formatDate(ts) {
   const d = new Date(ts)
@@ -664,17 +671,13 @@ function generateTeams(selected, players, rules) {
   }
   if (best) return best
 
-  // Final fallback: ignore all rules, just balance by score
-  for (let i = 0; i < 500; i++) {
-    const sp = shuffle(pool)
-    const t1 = sp.slice(0, half)
-    const t2 = sp.slice(half)
-    const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
-    const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
-    const diff = Math.abs(s1 - s2)
-    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, fallback: true, rulesIgnored: true } }
-  }
-  return best
+  // Final fallback: deterministic snake-draft by score — always succeeds
+  const sorted = [...pool].sort((a, b) => playerScore(b) - playerScore(a))
+  const t1 = [], t2 = []
+  sorted.forEach((p, i) => (i % 2 === 0 ? t1 : t2).push(p))
+  const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+  const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+  return { t1, t2, s1, s2, fallback: true, rulesIgnored: true }
 }
 
 // ─── Team Display ─────────────────────────────────────────────────────────────
