@@ -1130,7 +1130,16 @@ export default function App() {
 
         {tab === 'rules' && <RulesTab rules={rules} players={players} saveRules={saveRules} canEdit={canEdit} />}
 
-        {tab === 'session' && (
+        {tab === 'session' && !canEdit && (
+          <Card style={{ padding: '48px 20px', textAlign: 'center' }}>
+            <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>Session is locked</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Unlock with your PIN to pick players and generate teams</div>
+            <Btn variant="primary" onClick={() => setShowPin(true)}>Unlock</Btn>
+          </Card>
+        )}
+
+        {tab === 'session' && canEdit && (
           <div>
             <p style={{ fontSize: 13, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
               Pick 14 players for today's game. Formation counters are a guide — no position limits enforced.
