@@ -9,6 +9,8 @@ const FORMATION  = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
 const POS_COLOR  = { GK: '#f59e0b', DEF: '#3b82f6', MID: '#22c55e', FWD: '#ef4444' }
 const POS_BG     = { GK: '#fef3c7', DEF: '#dbeafe', MID: '#dcfce7', FWD: '#fee2e2' }
 
+const SECRET    = '1010'
+
 const STATS     = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
 const QUALITIES = ['Aggression', 'Leadership', 'Team Player', 'Work Rate']
 const LEVELS    = ['Low', 'Med', 'High']
@@ -152,7 +154,7 @@ function Btn({ children, onClick, variant = 'default', disabled, style }) {
 
 // ─── Player Card ─────────────────────────────────────────────────────────────
 
-function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected, onToggle }) {
+function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected, onToggle, canEdit = true }) {
   const [expanded, setExpanded] = useState(false)
   const p = player
   const secondary = p.secondaryPositions || []
@@ -166,6 +168,21 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
     if (pos === p.position) return // can't set primary as secondary
     onUpdate({ ...p, secondaryPositions: secondary.includes(pos) ? secondary.filter(x => x !== pos) : [...secondary, pos] })
   }
+
+  if (!canEdit && !compact) return (
+    <Card style={{ marginBottom: 10 }}>
+      <div style={{ padding: '12px 16px', display: 'flex', gap: 10, alignItems: 'center' }}>
+        <Badge pos={p.position} />
+        {secondary.map(pos => <Badge key={pos} pos={pos} small />)}
+        <span style={{ flex: 1, fontSize: 15, fontWeight: 600, color: C.text }}>{p.name || 'Unnamed'}</span>
+        {p.age && <span style={{ fontSize: 13, color: C.muted }}>{p.age}y</span>}
+        <Stars value={p.stars} size={16} />
+      </div>
+      <div style={{ padding: '0 16px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px 16px' }}>
+        {STATS.map(s => <StatBar key={s} label={s} value={p[s.toLowerCase()] ?? 5} />)}
+      </div>
+    </Card>
+  )
 
   if (compact) return (
     <div onClick={onToggle} style={{
@@ -301,7 +318,7 @@ function PlayerCard({ player, allPlayers, onUpdate, onDelete, compact, selected,
 
 // ─── Rules Tab ────────────────────────────────────────────────────────────────
 
-function RulesTab({ rules, players, saveRules }) {
+function RulesTab({ rules, players, saveRules, canEdit = true }) {
   const [draft, setDraft] = useState(null)
   const named = players.filter(p => p.name)
 
@@ -343,14 +360,24 @@ function RulesTab({ rules, players, saveRules }) {
                 {' · '}{pA?.name} & {pB?.name}
               </div>
             </div>
-            <button onClick={() => saveRules(rules.map(x => x.id === r.id ? { ...x, active: !x.active } : x))}
-              style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
+            {canEdit ? (
+              <>
+                <button onClick={() => saveRules(rules.map(x => x.id === r.id ? { ...x, active: !x.active } : x))}
+                  style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
+                    background: r.active ? '#dcfce7' : '#f1f5f9', color: r.active ? '#16a34a' : C.muted,
+                    border: `1.5px solid ${r.active ? '#86efac' : C.border}` }}>
+                  {r.active ? 'On' : 'Off'}
+                </button>
+                <button onClick={() => saveRules(rules.filter(x => x.id !== r.id))}
+                  style={{ fontSize: 18, color: '#d1d5db', background: 'none', border: 'none', padding: '0 4px', lineHeight: 1 }}>×</button>
+              </>
+            ) : (
+              <span style={{ fontSize: 12, padding: '5px 12px', borderRadius: 20, fontWeight: 600,
                 background: r.active ? '#dcfce7' : '#f1f5f9', color: r.active ? '#16a34a' : C.muted,
                 border: `1.5px solid ${r.active ? '#86efac' : C.border}` }}>
-              {r.active ? 'On' : 'Off'}
-            </button>
-            <button onClick={() => saveRules(rules.filter(x => x.id !== r.id))}
-              style={{ fontSize: 18, color: '#d1d5db', background: 'none', border: 'none', padding: '0 4px', lineHeight: 1 }}>×</button>
+                {r.active ? 'On' : 'Off'}
+              </span>
+            )}
           </Card>
         )
       })}
@@ -386,7 +413,7 @@ function RulesTab({ rules, players, saveRules }) {
           </div>
         </Card>
       )}
-      {!draft && (
+      {!draft && canEdit && (
         <button onClick={() => setDraft({ id: Date.now(), label: '', playerA: null, playerB: null, type: 'together', active: true })}
           style={{ width: '100%', padding: 12, fontSize: 14, borderRadius: 12, marginTop: 4,
             border: `2px dashed ${C.border}`, background: 'transparent', color: C.muted, fontWeight: 500 }}>
@@ -399,7 +426,7 @@ function RulesTab({ rules, players, saveRules }) {
 
 // ─── History Tab ─────────────────────────────────────────────────────────────
 
-function HistoryTab({ history, players, teams, saveHistory }) {
+function HistoryTab({ history, players, teams, saveHistory, canEdit = true }) {
   const [filter, setFilter] = useState('all')
   const [showGameForm, setShowGameForm] = useState(false)
   const [showNoteForm, setShowNoteForm] = useState(false)
@@ -443,7 +470,7 @@ function HistoryTab({ history, players, teams, saveHistory }) {
   return (
     <div>
       {/* Action buttons */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+      {canEdit && <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
         <button onClick={() => { setShowGameForm(!showGameForm); setShowNoteForm(false) }}
           style={{ flex: 1, padding: '10px', borderRadius: 12, fontSize: 13, fontWeight: 600,
             background: showGameForm ? C.accent : C.card, color: showGameForm ? '#fff' : C.sub,
@@ -456,7 +483,7 @@ function HistoryTab({ history, players, teams, saveHistory }) {
             border: `1.5px solid ${showNoteForm ? '#f59e0b' : C.border}` }}>
           💬 Add note
         </button>
-      </div>
+      </div>}
 
       {/* Game form */}
       {showGameForm && (
@@ -896,6 +923,15 @@ export default function App() {
   const [error, setError]       = useState('')
   const [saving, setSaving]     = useState(false)
   const [loaded, setLoaded]     = useState(false)
+  const [canEdit, setCanEdit]   = useState(false)
+  const [showPin, setShowPin]   = useState(false)
+  const [pinInput, setPinInput] = useState('')
+  const [pinError, setPinError] = useState(false)
+
+  const tryUnlock = () => {
+    if (pinInput === SECRET) { setCanEdit(true); setShowPin(false); setPinInput(''); setPinError(false) }
+    else { setPinError(true); setPinInput('') }
+  }
 
   useEffect(() => {
     (async () => {
@@ -986,6 +1022,41 @@ export default function App() {
 
   return (
     <div style={{ minHeight: '100vh', background: C.bg }}>
+      {/* PIN modal */}
+      {showPin && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 999,
+          display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          onClick={e => { if (e.target === e.currentTarget) { setShowPin(false); setPinInput(''); setPinError(false) } }}>
+          <div style={{ background: '#fff', borderRadius: 20, padding: '32px 28px', width: 300,
+            boxShadow: '0 20px 60px rgba(0,0,0,0.3)', textAlign: 'center' }}>
+            <div style={{ fontSize: 36, marginBottom: 8 }}>🔒</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.text, marginBottom: 4 }}>Enter PIN to edit</div>
+            <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Only squad managers can make changes</div>
+            <input
+              autoFocus
+              type="password"
+              value={pinInput}
+              onChange={e => { setPinInput(e.target.value); setPinError(false) }}
+              onKeyDown={e => e.key === 'Enter' && tryUnlock()}
+              placeholder="PIN"
+              style={{ width: '100%', fontSize: 24, textAlign: 'center', padding: '12px',
+                borderRadius: 12, border: `2px solid ${pinError ? '#ef4444' : C.border}`,
+                letterSpacing: 8, marginBottom: 8, outline: 'none' }} />
+            {pinError && <div style={{ fontSize: 13, color: '#ef4444', marginBottom: 8 }}>Incorrect PIN. Try again.</div>}
+            <button onClick={tryUnlock}
+              style={{ width: '100%', padding: '12px', borderRadius: 12, fontSize: 15, fontWeight: 700,
+                background: C.accent, color: '#fff', border: 'none', cursor: 'pointer', marginBottom: 8 }}>
+              Unlock
+            </button>
+            <button onClick={() => { setShowPin(false); setPinInput(''); setPinError(false) }}
+              style={{ width: '100%', padding: '10px', borderRadius: 12, fontSize: 13,
+                background: 'transparent', color: C.muted, border: 'none', cursor: 'pointer' }}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <div style={{ background: C.header, padding: '16px 20px', display: 'flex',
         alignItems: 'center', justifyContent: 'space-between',
@@ -999,9 +1070,17 @@ export default function App() {
             </div>
           </div>
         </div>
-        <div style={{ width: 8, height: 8, borderRadius: '50%',
-          background: saving ? '#f59e0b' : C.accent,
-          boxShadow: `0 0 8px ${saving ? '#f59e0b' : C.accent}` }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div style={{ width: 8, height: 8, borderRadius: '50%',
+            background: saving ? '#f59e0b' : C.accent,
+            boxShadow: `0 0 8px ${saving ? '#f59e0b' : C.accent}` }} />
+          <button onClick={() => canEdit ? setCanEdit(false) : setShowPin(true)}
+            title={canEdit ? 'Lock (exit edit mode)' : 'Unlock to edit'}
+            style={{ background: canEdit ? '#22c55e22' : 'transparent', border: `1px solid ${canEdit ? '#22c55e' : '#475569'}`,
+              borderRadius: 8, padding: '5px 10px', fontSize: 14, color: canEdit ? '#22c55e' : '#94a3b8', cursor: 'pointer' }}>
+            {canEdit ? '🔓 Edit' : '🔒'}
+          </button>
+        </div>
       </div>
 
       {/* Tab bar */}
@@ -1036,18 +1115,20 @@ export default function App() {
             )}
             {players.map(p => (
               <PlayerCard key={p.id} player={p} allPlayers={players}
-                onUpdate={updatePlayer} onDelete={() => deletePlayer(p.id)} />
+                onUpdate={updatePlayer} onDelete={() => deletePlayer(p.id)} canEdit={canEdit} />
             ))}
-            <button onClick={addPlayer}
-              style={{ width: '100%', padding: 14, fontSize: 14, fontWeight: 600,
-                borderRadius: 14, border: `2px dashed ${C.border}`, background: 'transparent',
-                color: C.muted, marginTop: 4 }}>
-              + Add player
-            </button>
+            {canEdit && (
+              <button onClick={addPlayer}
+                style={{ width: '100%', padding: 14, fontSize: 14, fontWeight: 600,
+                  borderRadius: 14, border: `2px dashed ${C.border}`, background: 'transparent',
+                  color: C.muted, marginTop: 4 }}>
+                + Add player
+              </button>
+            )}
           </div>
         )}
 
-        {tab === 'rules' && <RulesTab rules={rules} players={players} saveRules={saveRules} />}
+        {tab === 'rules' && <RulesTab rules={rules} players={players} saveRules={saveRules} canEdit={canEdit} />}
 
         {tab === 'session' && (
           <div>
@@ -1139,12 +1220,19 @@ export default function App() {
         )}
 
         {tab === 'history' && (
-          <HistoryTab history={history} players={players} teams={teams} saveHistory={saveHistory} />
+          <HistoryTab history={history} players={players} teams={teams} saveHistory={saveHistory} canEdit={canEdit} />
         )}
 
         {tab === 'ai' && (
-          <AICoach players={players} rules={rules} history={history}
-            onPlayersUpdate={savePlayers} onRulesUpdate={saveRules} onHistoryUpdate={saveHistory} />
+          canEdit
+            ? <AICoach players={players} rules={rules} history={history}
+                onPlayersUpdate={savePlayers} onRulesUpdate={saveRules} onHistoryUpdate={saveHistory} />
+            : <Card style={{ padding: '48px 20px', textAlign: 'center' }}>
+                <div style={{ fontSize: 36, marginBottom: 12 }}>🔒</div>
+                <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 6 }}>AI Coach is locked</div>
+                <div style={{ fontSize: 13, color: C.muted, marginBottom: 20 }}>Unlock with your PIN to chat with the AI</div>
+                <Btn variant="primary" onClick={() => setShowPin(true)}>Unlock</Btn>
+              </Card>
         )}
       </div>
     </div>
