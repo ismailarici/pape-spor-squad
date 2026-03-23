@@ -906,17 +906,15 @@ export default function App() {
     return acc
   }, {})
 
+  const totalNeeded = Object.values(FORMATION).reduce((a, b) => a + b, 0)
+
   const toggleSelect = id => {
-    const p = players.find(x => x.id === id)
-    if (!p) return
     if (selected.includes(id)) { setSelected(s => s.filter(x => x !== id)); setError(''); return }
-    if (selCounts[p.position] >= FORMATION[p.position]) {
-      setError(`Max ${FORMATION[p.position]} ${p.position}s allowed.`); return
-    }
+    if (selected.length >= totalNeeded) { setError(`Max ${totalNeeded} players allowed.`); return }
     setError(''); setSelected(s => [...s, id])
   }
 
-  const readyToGenerate = POSITIONS.every(pos => selCounts[pos] === FORMATION[pos])
+  const readyToGenerate = selected.length === totalNeeded
   const activeRules = rules.filter(r => r.active)
 
   const generate = () => {
@@ -1011,7 +1009,7 @@ export default function App() {
         {tab === 'session' && (
           <div>
             <p style={{ fontSize: 13, color: C.sub, marginBottom: 14, lineHeight: 1.6 }}>
-              Pick 2 GK · 6 DEF · 4 MID · 2 FWD for today's game.
+              Pick 14 players for today's game. Formation counters are a guide — no position limits enforced.
             </p>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8, marginBottom: 16 }}>
               {POSITIONS.map(pos => {
@@ -1062,7 +1060,7 @@ export default function App() {
                 borderRadius: 14, border: 'none', background: readyToGenerate ? C.accent : C.border,
                 color: readyToGenerate ? '#fff' : C.muted, cursor: readyToGenerate ? 'pointer' : 'not-allowed',
                 boxShadow: readyToGenerate ? '0 4px 14px rgba(34,197,94,0.35)' : 'none' }}>
-              Generate Teams
+              {readyToGenerate ? 'Generate Teams' : `Select ${totalNeeded - selected.length} more player${totalNeeded - selected.length !== 1 ? 's' : ''}`}
             </button>
           </div>
         )}
