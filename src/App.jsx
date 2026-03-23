@@ -613,38 +613,54 @@ function HistoryTab({ history, players, teams, saveHistory }) {
 // ─── Team Generation ─────────────────────────────────────────────────────────
 
 function generateTeams(selected, players, rules) {
-  const pool = players.filter(p => selected.includes(p.id))
+  const pool   = players.filter(p => selected.includes(p.id))
+  const active = (rules || []).filter(r => r.active)
+  const half   = Math.floor(pool.length / 2)
+
+  const bad = (ta, tb) => {
+    if (ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
+    if (tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
+    if (ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))) return true
+    if (tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))) return true
+    return active.some(r => {
+      const aT1 = ta.find(p => p.id == r.playerA), bT1 = ta.find(p => p.id == r.playerB)
+      const aT2 = tb.find(p => p.id == r.playerA), bT2 = tb.find(p => p.id == r.playerB)
+      return r.type === 'together' ? (aT1 && bT2) || (aT2 && bT1) : (aT1 && bT1) || (aT2 && bT2)
+    })
+  }
+
+  // Try strict position-based split first (ideal case)
   const gks  = pool.filter(p => p.position === 'GK')
   const defs = pool.filter(p => p.position === 'DEF')
   const mids = pool.filter(p => p.position === 'MID')
   const fwds = pool.filter(p => p.position === 'FWD')
-  if (gks.length < 2 || defs.length < 6 || mids.length < 4 || fwds.length < 2) return null
 
-  const active = (rules || []).filter(r => r.active)
-  let best = null, bestDiff = Infinity
-
-  for (let i = 0; i < 500; i++) {
-    const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
-    const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
-    const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
-
-    const bad = (ta, tb) => {
-      if (ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
-      if (tb.some(a => tb.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
-      if (ta.some(a => (a.keepTogether||[]).some(id => tb.find(b => b.id === id)))) return true
-      if (tb.some(a => (a.keepTogether||[]).some(id => ta.find(b => b.id === id)))) return true
-      return active.some(r => {
-        const aT1 = ta.find(p => p.id == r.playerA), bT1 = ta.find(p => p.id == r.playerB)
-        const aT2 = tb.find(p => p.id == r.playerA), bT2 = tb.find(p => p.id == r.playerB)
-        return r.type === 'together' ? (aT1 && bT2) || (aT2 && bT1) : (aT1 && bT1) || (aT2 && bT2)
-      })
+  if (gks.length >= 2 && defs.length >= 6 && mids.length >= 4 && fwds.length >= 2) {
+    let best = null, bestDiff = Infinity
+    for (let i = 0; i < 500; i++) {
+      const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
+      const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
+      const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
+      if (bad(t1, t2)) continue
+      const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+      const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+      const diff = Math.abs(s1 - s2)
+      if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2 } }
     }
+    if (best) return best
+  }
 
+  // Fallback: score-based split ignoring positions, still respecting rules
+  let best = null, bestDiff = Infinity
+  for (let i = 0; i < 800; i++) {
+    const sp = shuffle(pool)
+    const t1 = sp.slice(0, half)
+    const t2 = sp.slice(half)
     if (bad(t1, t2)) continue
     const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
     const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
     const diff = Math.abs(s1 - s2)
-    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2 } }
+    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, fallback: true } }
   }
   return best
 }
@@ -919,8 +935,12 @@ export default function App() {
 
   const generate = () => {
     const result = generateTeams(selected, players, rules)
-    if (!result) setError('Could not balance teams. Try toggling some rules off.')
-    else { setTeams(result); setError(''); setTab('teams') }
+    if (!result) setError('Could not split teams — too many conflicting rules. Try toggling some off.')
+    else {
+      setTeams(result)
+      setError(result.fallback ? 'Teams split by score (not enough players per position for formation-based split).' : '')
+      setTab('teams')
+    }
   }
 
   const TABS = [
