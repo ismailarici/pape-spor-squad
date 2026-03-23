@@ -662,6 +662,18 @@ function generateTeams(selected, players, rules) {
     const diff = Math.abs(s1 - s2)
     if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, fallback: true } }
   }
+  if (best) return best
+
+  // Final fallback: ignore all rules, just balance by score
+  for (let i = 0; i < 500; i++) {
+    const sp = shuffle(pool)
+    const t1 = sp.slice(0, half)
+    const t2 = sp.slice(half)
+    const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+    const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+    const diff = Math.abs(s1 - s2)
+    if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, fallback: true, rulesIgnored: true } }
+  }
   return best
 }
 
@@ -935,10 +947,10 @@ export default function App() {
 
   const generate = () => {
     const result = generateTeams(selected, players, rules)
-    if (!result) setError('Could not split teams — too many conflicting rules. Try toggling some off.')
+    if (!result) setError('Could not generate teams.')
     else {
       setTeams(result)
-      setError(result.fallback ? 'Teams split by score (not enough players per position for formation-based split).' : '')
+      setError(result.rulesIgnored ? '⚠ Rules could not all be satisfied — teams split by score only.' : result.fallback ? 'Teams split by score (mixed positions selected).' : '')
       setTab('teams')
     }
   }
