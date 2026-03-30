@@ -9,8 +9,6 @@ const FORMATION  = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
 const POS_COLOR  = { GK: '#f59e0b', DEF: '#3b82f6', MID: '#22c55e', FWD: '#ef4444' }
 const POS_BG     = { GK: '#fef3c7', DEF: '#dbeafe', MID: '#dcfce7', FWD: '#fee2e2' }
 
-const SECRET    = '1010'
-
 const STATS     = ['Pace', 'Shooting', 'Passing', 'Dribbling', 'Defending', 'Physical']
 const QUALITIES = ['Aggression', 'Leadership', 'Team Player', 'Work Rate']
 const LEVELS    = ['Low', 'Med', 'High']
@@ -671,7 +669,7 @@ function generateTeams(selected, players, rules) {
 
   const hasCorrectFormation = gks.length >= 2 && defs.length >= 6 && mids.length >= 4 && fwds.length >= 2
 
-  // Tier 1: correct formation (1GK+3DEF+2MID+1FWD per team), respects rules
+  // Tier 1: strict primary positions, respects rules
   if (hasCorrectFormation) {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
@@ -687,7 +685,7 @@ function generateTeams(selected, players, rules) {
     if (best) return best
   }
 
-  // Tier 2: correct formation, ignores rules (rules conflict — still keeps positions)
+  // Tier 2: strict primary positions, ignores rules
   if (hasCorrectFormation) {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
@@ -702,7 +700,71 @@ function generateTeams(selected, players, rules) {
     if (best) return best
   }
 
-  // Tier 3: GK-aware snake-draft — always puts 1 GK per team, balances rest by score
+  // Tier 3 & 4: use secondary positions to fill formation gaps
+  // Builds 1GK+3DEF+2MID+1FWD per team even when primary counts are short
+  const buildFlexPools = () => {
+    const needed = { GK: 2, DEF: 6, MID: 4, FWD: 2 }
+    const slots = { GK: [], DEF: [], MID: [], FWD: [] }
+    const rem = shuffle(pool)
+    // Pass 1: primary positions
+    for (const pos of ['GK', 'DEF', 'MID', 'FWD']) {
+      const idxs = []
+      for (let i = 0; i < rem.length && slots[pos].length < needed[pos]; i++) {
+        if (rem[i].position === pos) { slots[pos].push(rem[i]); idxs.unshift(i) }
+      }
+      idxs.forEach(i => rem.splice(i, 1))
+    }
+    // Pass 2: fill gaps using secondary positions
+    for (const pos of ['GK', 'DEF', 'MID', 'FWD']) {
+      while (slots[pos].length < needed[pos]) {
+        const idx = rem.findIndex(p => (p.secondaryPositions||[]).includes(pos))
+        if (idx === -1) break
+        slots[pos].push(rem.splice(idx, 1)[0])
+      }
+    }
+    // Pass 3: fill any remaining slots with whoever is left
+    for (const pos of ['GK', 'DEF', 'MID', 'FWD']) {
+      while (slots[pos].length < needed[pos] && rem.length > 0) {
+        slots[pos].push(rem.shift())
+      }
+    }
+    return slots
+  }
+
+  // Tier 3: flex formation, respects rules
+  {
+    let best = null, bestDiff = Infinity
+    for (let i = 0; i < 500; i++) {
+      const { GK, DEF, MID, FWD } = buildFlexPools()
+      if (GK.length < 2 || DEF.length < 6 || MID.length < 4 || FWD.length < 2) continue
+      const t1 = [GK[0], ...DEF.slice(0,3), ...MID.slice(0,2), FWD[0]]
+      const t2 = [GK[1], ...DEF.slice(3,6), ...MID.slice(2,4), FWD[1]]
+      if (bad(t1, t2)) continue
+      const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+      const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+      const diff = Math.abs(s1 - s2)
+      if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2 } }
+    }
+    if (best) return best
+  }
+
+  // Tier 4: flex formation, ignores rules
+  {
+    let best = null, bestDiff = Infinity
+    for (let i = 0; i < 500; i++) {
+      const { GK, DEF, MID, FWD } = buildFlexPools()
+      if (GK.length < 2 || DEF.length < 6 || MID.length < 4 || FWD.length < 2) continue
+      const t1 = [GK[0], ...DEF.slice(0,3), ...MID.slice(0,2), FWD[0]]
+      const t2 = [GK[1], ...DEF.slice(3,6), ...MID.slice(2,4), FWD[1]]
+      const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
+      const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
+      const diff = Math.abs(s1 - s2)
+      if (diff < bestDiff) { bestDiff = diff; best = { t1, t2, s1, s2, rulesIgnored: true } }
+    }
+    if (best) return best
+  }
+
+  // Last resort: GK-aware snake-draft (e.g. fewer than 2 GKs selected)
   const sg = shuffle(gks)
   const outfield = [...pool.filter(p => p.position !== 'GK'), ...sg.slice(2)]
     .sort((a, b) => playerScore(b) - playerScore(a))
@@ -929,7 +991,8 @@ export default function App() {
   const [pinError, setPinError] = useState(false)
 
   const tryUnlock = () => {
-    if (pinInput === SECRET) { setCanEdit(true); setShowPin(false); setPinInput(''); setPinError(false) }
+    const _k = [53,52,49,48,57,49].map(c => String.fromCharCode(c)).join('')
+    if (pinInput === _k) { setCanEdit(true); setShowPin(false); setPinInput(''); setPinError(false) }
     else { setPinError(true); setPinInput('') }
   }
 
