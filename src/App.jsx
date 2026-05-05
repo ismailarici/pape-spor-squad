@@ -647,7 +647,6 @@ function HistoryTab({ history, players, teams, saveHistory, canEdit = true }) {
 function generateTeams(selected, players, rules) {
   const pool   = players.filter(p => selected.includes(p.id))
   const active = (rules || []).filter(r => r.active)
-  const half   = Math.floor(pool.length / 2)
 
   const bad = (ta, tb) => {
     if (ta.some(a => ta.some(b => a.id !== b.id && (a.keepApart||[]).includes(b.id)))) return true
@@ -669,13 +668,15 @@ function generateTeams(selected, players, rules) {
 
   const hasCorrectFormation = gks.length >= 2 && defs.length >= 6 && mids.length >= 4 && fwds.length >= 2
 
+  const tag = (p, role) => ({ ...p, assignedRole: role })
+
   // Tier 1: strict primary positions, respects rules
   if (hasCorrectFormation) {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
       const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
-      const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
-      const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
+      const t1 = [tag(sg[0],'GK'), ...sd.slice(0,3).map(p=>tag(p,'DEF')), ...sm.slice(0,2).map(p=>tag(p,'MID')), tag(sf[0],'FWD')]
+      const t2 = [tag(sg[1],'GK'), ...sd.slice(3,6).map(p=>tag(p,'DEF')), ...sm.slice(2,4).map(p=>tag(p,'MID')), tag(sf[1],'FWD')]
       if (bad(t1, t2)) continue
       const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
       const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
@@ -690,8 +691,8 @@ function generateTeams(selected, players, rules) {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
       const sd = shuffle(defs), sm = shuffle(mids), sf = shuffle(fwds), sg = shuffle(gks)
-      const t1 = [sg[0], ...sd.slice(0,3), ...sm.slice(0,2), sf[0]]
-      const t2 = [sg[1], ...sd.slice(3,6), ...sm.slice(2,4), sf[1]]
+      const t1 = [tag(sg[0],'GK'), ...sd.slice(0,3).map(p=>tag(p,'DEF')), ...sm.slice(0,2).map(p=>tag(p,'MID')), tag(sf[0],'FWD')]
+      const t2 = [tag(sg[1],'GK'), ...sd.slice(3,6).map(p=>tag(p,'DEF')), ...sm.slice(2,4).map(p=>tag(p,'MID')), tag(sf[1],'FWD')]
       const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
       const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
       const diff = Math.abs(s1 - s2)
@@ -731,14 +732,18 @@ function generateTeams(selected, players, rules) {
     return slots
   }
 
+  const buildTaggedTeams = ({ GK, DEF, MID, FWD }) => ({
+    t1: [tag(GK[0],'GK'), ...DEF.slice(0,3).map(p=>tag(p,'DEF')), ...MID.slice(0,2).map(p=>tag(p,'MID')), tag(FWD[0],'FWD')],
+    t2: [tag(GK[1],'GK'), ...DEF.slice(3,6).map(p=>tag(p,'DEF')), ...MID.slice(2,4).map(p=>tag(p,'MID')), tag(FWD[1],'FWD')],
+  })
+
   // Tier 3: flex formation, respects rules
   {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
-      const { GK, DEF, MID, FWD } = buildFlexPools()
-      if (GK.length < 2 || DEF.length < 6 || MID.length < 4 || FWD.length < 2) continue
-      const t1 = [GK[0], ...DEF.slice(0,3), ...MID.slice(0,2), FWD[0]]
-      const t2 = [GK[1], ...DEF.slice(3,6), ...MID.slice(2,4), FWD[1]]
+      const slots = buildFlexPools()
+      if (slots.GK.length < 2 || slots.DEF.length < 6 || slots.MID.length < 4 || slots.FWD.length < 2) continue
+      const { t1, t2 } = buildTaggedTeams(slots)
       if (bad(t1, t2)) continue
       const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
       const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
@@ -752,10 +757,9 @@ function generateTeams(selected, players, rules) {
   {
     let best = null, bestDiff = Infinity
     for (let i = 0; i < 500; i++) {
-      const { GK, DEF, MID, FWD } = buildFlexPools()
-      if (GK.length < 2 || DEF.length < 6 || MID.length < 4 || FWD.length < 2) continue
-      const t1 = [GK[0], ...DEF.slice(0,3), ...MID.slice(0,2), FWD[0]]
-      const t2 = [GK[1], ...DEF.slice(3,6), ...MID.slice(2,4), FWD[1]]
+      const slots = buildFlexPools()
+      if (slots.GK.length < 2 || slots.DEF.length < 6 || slots.MID.length < 4 || slots.FWD.length < 2) continue
+      const { t1, t2 } = buildTaggedTeams(slots)
       const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
       const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
       const diff = Math.abs(s1 - s2)
@@ -764,13 +768,9 @@ function generateTeams(selected, players, rules) {
     if (best) return best
   }
 
-  // Last resort: GK-aware snake-draft (e.g. fewer than 2 GKs selected)
-  const sg = shuffle(gks)
-  const outfield = [...pool.filter(p => p.position !== 'GK'), ...sg.slice(2)]
-    .sort((a, b) => playerScore(b) - playerScore(a))
-  const t1 = sg.length >= 1 ? [sg[0]] : []
-  const t2 = sg.length >= 2 ? [sg[1]] : []
-  outfield.forEach((p, i) => (i % 2 === 0 ? t1 : t2).push(p))
+  // Last resort: guaranteed formation, no rules (handles edge case of <14 players selected)
+  const slots = buildFlexPools()
+  const { t1, t2 } = buildTaggedTeams(slots)
   const s1 = t1.reduce((s, p) => s + playerScore(p), 0)
   const s2 = t2.reduce((s, p) => s + playerScore(p), 0)
   return { t1, t2, s1, s2, fallback: true, rulesIgnored: true }
@@ -779,7 +779,7 @@ function generateTeams(selected, players, rules) {
 // ─── Team Display ─────────────────────────────────────────────────────────────
 
 function TeamDisplay({ team, label, score, color, textColor = '#fff' }) {
-  const byPos = POSITIONS.reduce((acc, pos) => { acc[pos] = team.filter(p => p.position === pos); return acc }, {})
+  const byPos = POSITIONS.reduce((acc, pos) => { acc[pos] = team.filter(p => (p.assignedRole || p.position) === pos); return acc }, {})
   return (
     <div style={{ flex: 1, minWidth: 260, background: C.card, borderRadius: 16,
       border: `1px solid ${C.border}`, overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.08)' }}>
